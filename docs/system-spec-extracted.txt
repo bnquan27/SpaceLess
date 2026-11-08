@@ -1,0 +1,390 @@
+ĐẶC TẢ HỆ THỐNG TRÒ CHUYỆN VÀ ĐÀM THOẠI THỜI GIAN THỰC (MVP v1)
+ 
+1. Tổng quan sản phẩm
+Ứng dụng trò chuyện thời gian thực trên máy tính (Desktop App) bao gồm các nhóm chức năng:
+Tài khoản và Hồ sơ: Đăng ký, đăng nhập, đăng xuất, khôi phục mật khẩu qua email, xem và chỉnh sửa hồ sơ cá nhân.
+Quan hệ xã hội và Tin nhắn riêng (DM): Tìm kiếm người dùng, kết bạn, hủy kết bạn, chặn và gỡ chặn hai chiều độc lập; nhắn tin riêng 1–1 giữa hai người bạn.
+Kênh và Phòng: Tạo, sửa, xóa mềm Kênh; thêm thành viên qua lời mời hoặc liên kết công khai; phân quyền 4 vai trò; tạo, sửa, xóa mềm và kéo thả sắp xếp Nhóm Phòng (Room Category) và Phòng (TEXT / VOICE, công khai / riêng tư).
+Nhắn tin và Tương tác: Gửi, sửa, xóa tin nhắn thời gian thực, xem lịch sử phân trang, đính kèm tệp (tối đa 25 MB/tệp), thả biểu cảm (reaction), theo dõi trạng thái "đã xem" và đếm số tin chưa đọc.
+Đàm thoại và Chia sẻ màn hình: Đàm thoại âm thanh/video và chia sẻ màn hình thời gian thực (720p–1080p, 30–60 fps) trong Phòng VOICE thông qua LiveKit.
+ 
+
+ 
+2. Thuật ngữ và Quy ước kiến trúc chung
+ 
+2.1. Bảng thuật ngữ nghiệp vụ
+ 
+Thuật ngữ
+Định nghĩa
+Kênh (Channel)
+Không gian chung chứa các thành viên, Nhóm Phòng và Phòng. Tại một thời điểm có một chế độ gia nhập (INVITE_ONLY mặc định hoặc PUBLIC_LINK).
+Phòng (Room)
+Không gian con thuộc một Kênh (TEXT hoặc VOICE), hoặc cuộc trò chuyện riêng (DM). Trong Kênh, Phòng có thể là Công khai (mọi thành viên Kênh đều thấy) hoặc Riêng tư (chỉ thành viên được gán vào Phòng cùng Creator và Moderator của Kênh mới thấy).
+Nhóm Phòng (Room Category)
+Thư mục gom và sắp xếp các Phòng trong cùng một Kênh (tương tự Discord). Một Phòng thuộc tối đa một Nhóm hoặc không thuộc Nhóm nào (category_id = NULL).
+Lời mời Kênh (Invitation)
+Lời mời tham gia Kênh do Creator/Moderator gửi tới một người bạn. Trạng thái: PENDING, ACCEPTED, DECLINED, CANCELLED. Mỗi người nhận có tối đa một lời mời PENDING trên một Kênh.
+Liên kết công khai (invite_code)
+Mã chuỗi ngẫu nhiên gắn với Kênh (độc lập với channel_id), chỉ cho phép gia nhập khi Kênh còn khả dụng (is_available = true) và join_mode = PUBLIC_LINK.
+Cuộc trò chuyện riêng (DM)
+Phòng loại DM không thuộc Kênh, có đúng 2 thành viên. Chỉ tạo mới và gửi/tương tác tin khi hai người là bạn bè và không chặn nhau theo bất kỳ chiều nào. Khi hủy kết bạn hoặc chặn, DM giữ nguyên lịch sử ở chế độ chỉ đọc; kết bạn lại và hết chặn thì dùng lại chính DM cũ. DM không hỗ trợ gọi thoại hay chia sẻ màn hình.
+Mốc đọc (last_read_sequence)
+Mỗi Phòng TEXT/DM duy trì Room.last_message_sequence tăng đơn điệu theo từng tin gửi mới. Người dùng được tính là đã xem tin M khi last_read_sequence >= M.room_sequence. Xóa tin không làm lùi sequence.
+Xóa mềm / Xóa cứng
+Xóa mềm: đặt is_available = false, giữ bản ghi trong DB và chặn mọi truy cập nội dung. Xóa cứng: xóa hẳn bản ghi khỏi DB (tệp vật lý liên quan được dọn bất đồng bộ sau khi transaction commit).
+ 
+ 
+2.2. Quy ước Định danh (Snowflake 64-bit), Giao thức và Bảo mật chung
+(Quy ước dưới đây áp dụng bắt buộc cho mọi API và sự kiện trong hệ thống, không nhắc lại ở từng tính năng con)
+ 
+1. Định danh Snowflake 64-bit:
+Mọi thực thể chính (user_id, channel_id, room_id, category_id, message_id, invitation_id, friend_request_id, upload_id, attachment_id, voice_session_id) sử dụng Snowflake 64-bit do Server sinh theo cấu trúc: [1 bit 0 | 41 bit timestamp ms | 10 bit worker_id | 12 bit sequence].
+Lưu trữ và Truyền tải: Trong Database lưu kiểu số nguyên BIGINT (8 byte). Khi truyền qua JSON (REST request/response, URL path/query, WebSocket event), bắt buộc biểu diễn dưới dạng chuỗi thập phân (string, ví dụ "189304910293840192") để tránh lỗi làm tròn số 53-bit (Number.MAX_SAFE_INTEGER) của JavaScript trên ứng dụng Desktop.
+Bảo vệ lệch đồng hồ (Clock Skew): Bộ sinh Snowflake dùng đồng hồ đơn điệu (monotonic clock); nếu đồng hồ hệ thống lùi nhẹ thì chờ đến last_timestamp, nếu lệch lớn thì từ chối sinh ID và cảnh báo, tuyệt đối không phát sinh trùng ID.
+2. Giao thức giao tiếp:
+REST (/api/v1): Đọc bằng GET (tham số qua path/query), ghi bằng POST, PUT, PATCH (body JSON), xóa bằng DELETE (định danh qua URL path, không bắt buộc JSON body). Từ chối trường lạ ngoài schema. Với PATCH: bỏ qua trường là giữ nguyên, truyền null là xóa giá trị của trường nullable.
+WebSocket: Kênh một chiều Server đẩy sự kiện thời gian thực tới các phiên đã xác thực và đang có quyền xem tài nguyên đó. Chỉ phát sự kiện sau khi DB transaction đã commit thành công.
+Object Storage (Presigned URL): Tệp đính kèm và ảnh tải lên/tải xuống trực tiếp qua S3/MinIO/R2 bằng Presigned URL ngắn hạn do Backend cấp sau khi kiểm tra quyền; không truyền luồng byte tệp lớn xuyên qua API Server.
+LiveKit (WebRTC): Đảm nhận truyền tải media (âm thanh, video, chia sẻ màn hình) tách biệt khỏi REST/WebSocket.
+3. Xác thực, Phân quyền và Bảo vệ dữ liệu:
+Actor từ Token: Server luôn xác định người thao tác (actor_id) từ JWT Authorization: Bearer <token>, tuyệt đối không tin user_id hay vai trò do Client tự khai trong payload.
+Kiểm tra mỗi thao tác: Mọi request REST, kết nối WebSocket và yêu cầu cấp quyền tải tệp/media đều phải kiểm tra: (a) JWT còn hạn, jti chưa bị thu hồi, auth_version khớp với User.auth_version hiện tại; (b) User.is_available = true; (c) Tài nguyên đích còn khả dụng (is_available = true, với Phòng thuộc Kênh thì cả Kênh lẫn Phòng đều phải khả dụng); (d) Người dùng có quyền thực hiện thao tác tại thời điểm xử lý.
+Ẩn dữ liệu nhạy cảm: Response và sự kiện không bao giờ trả password_hash, token_hash, storage_key nội bộ. Hồ sơ của người dùng khác chỉ trả user_id, username, full_name, avatar_url và trạng thái quan hệ; không lộ email, số điện thoại, ngày sinh, địa chỉ cá nhân.
+4. Quy tắc chuẩn hóa chuỗi và Tên tài nguyên:
+Mọi tên (username, email, tên Kênh, tên Phòng, tên Nhóm) được trim và chuẩn hóa Unicode NFC (riêng mật khẩu giữ nguyên gốc, không trim/chuẩn hóa).
+username và email duy nhất toàn hệ thống (so sánh không phân biệt hoa thường).
+Tên Kênh không bắt buộc duy nhất toàn hệ thống. Tên Phòng và tên Nhóm Phòng chỉ cần duy nhất (không phân biệt hoa thường) trong phạm vi các Phòng / Nhóm đang khả dụng (is_available = true) thuộc cùng một Kênh; sau khi đổi tên hoặc xóa mềm, tên cũ được phép sử dụng lại.
+ 
+
+ 
+3. Vai trò và Ma trận quyền hạn trong Kênh
+ 
+Creator: Người tạo Kênh (luôn có đúng 1 Creator/Kênh). Có toàn quyền trong Kênh, không thể bị khai trừ và chỉ rời Kênh sau khi đã nhượng quyền Creator cho thành viên khác.
+Moderator: Quản trị viên cấp Kênh do Creator chỉ định. Quản lý Kênh, Phòng, Nhóm Phòng và thành viên thường; không được xóa Kênh, không khai trừ hay đổi quyền của Creator và các Moderator khác.
+Mod của Phòng riêng (is_room_mod): Do Creator/Moderator chỉ định cho một Phòng riêng tư cụ thể từ các thành viên của Phòng đó. Chỉ có quyền quản trị giới hạn bên trong đúng Phòng riêng ấy.
+Thành viên (Member): Người dùng thông thường trong Kênh.
+(Lưu ý: DM không áp dụng bảng vai trò này; hai người trong DM ngang quyền và chỉ sửa/xóa được tin nhắn của chính mình).
+ 
+Hành động
+Creator
+Moderator
+Mod Phòng riêng
+Thành viên
+Sửa thông tin Kênh, đổi chế độ gia nhập
+Có
+Có
+Không
+Không
+Xóa mềm Kênh
+Có
+Không
+Không
+Không
+Mời thành viên, xem liên kết công khai của Kênh
+Có
+Có
+Không
+Không
+Khai trừ Thành viên thường (Member)
+Có
+Có
+Không
+Không
+Khai trừ Moderator; chỉ định/gỡ Moderator; nhượng quyền Creator
+Có
+Không
+Không
+Không
+Tạo Phòng, xóa mềm Phòng; tạo/sửa/xóa/sắp xếp Nhóm Phòng và thứ tự Phòng
+Có
+Có
+Không
+Không
+Sửa Phòng
+Có
+Có
+Chỉ sửa tên và danh sách Member thường của Phòng mình
+Không
+Chỉ định hoặc gỡ Mod của Phòng riêng
+Có
+Có
+Không
+Không
+Xem và tham gia Phòng riêng tư
+Luôn có
+Luôn có
+Phòng của mình
+Khi có trong danh sách Phòng
+Xóa tin nhắn của người khác
+Có
+Có
+Chỉ trong Phòng của mình
+Không
+Sửa, xóa tin nhắn của chính mình; gửi tệp, thả reaction, đánh dấu đã đọc
+Có (nếu có quyền vào Phòng)
+Có (nếu có quyền vào Phòng)
+Trong Phòng của mình
+Khi có quyền vào Phòng
+Tự rời Kênh
+Sau khi nhượng quyền
+Có
+Có
+Có
+ 
+ 
+
+ 
+4. Đặc tả chi tiết các tính năng
+ 
+4.1. Tài khoản và Xác thực
+ 
+Tính năng
+Endpoint REST chính
+Hành vi và Xử lý của Server
+1. Đăng ký
+POST /api/v1/auth/register
+Input: username, password, full_name, date_of_birth, email, phone. Xử lý: Kiểm tra định dạng, ngày sinh không ở tương lai, username và email chưa tồn tại. Băm mật khẩu bằng thuật toán có salt (Argon2id hoặc Bcrypt). Trong 1 transaction: sinh user_id (Snowflake), tạo User (is_available = true, auth_version = 0) và User_detail. Trả về thông tin hồ sơ vừa tạo.
+2. Xem và Sửa hồ sơ
+GET / PATCH /api/v1/users/me
+Xem (GET): Trả toàn bộ hồ sơ cá nhân của chính tài khoản trong token. Sửa (PATCH): Cho phép sửa full_name, date_of_birth, phone, email, address, avatar_upload_id (không cho đổi username). Nếu đổi email: kiểm tra duy nhất và vô hiệu hóa toàn bộ Password_reset_token chưa dùng của tài khoản trong cùng transaction. Ảnh đại diện tải lên qua Presigned URL (PNG/JPEG/WebP hợp lệ); chỉ cập nhật tham chiếu ảnh mới sau khi kiểm tra hợp lệ, ảnh cũ dọn bất đồng bộ.
+3. Đăng nhập
+POST /api/v1/auth/login
+Input: username, password. Xử lý: Tra tài khoản và verify mật khẩu với password_hash. Sai tài khoản hoặc mật khẩu đều trả chung thông báo: "Tài khoản hoặc mật khẩu không khớp. Vui lòng kiểm tra lại". Nếu đúng mật khẩu nhưng is_available = false thì báo tài khoản đã bị khóa. Hợp lệ: cấp JWT phiên chứa sub = user_id (string), jti duy nhất, auth_version hiện tại (TTL 7 ngày; cho phép gọi POST /api/v1/auth/refresh gia hạn phiên khi đang hoạt động để không ngắt quãng công việc/cuộc gọi). Sau đăng nhập, Client mở WebSocket và gọi API bootstrap tải danh sách Kênh, Phòng, DM, bạn bè, danh sách chặn, lời mời và số tin chưa đọc.
+4. Đăng xuất
+POST /api/v1/auth/logout
+Xử lý: Trích jti từ JWT hiện tại, lưu vào bảng Revoked_token đến hết expires_at và đóng kết nối WebSocket của đúng phiên đó. Nếu phiên này đang sở hữu phiên đàm thoại/chia sẻ màn hình (session_jti trùng khớp) thì kết thúc phiên media đó (không làm ngắt cuộc gọi đang chạy ở thiết bị/phiên đăng nhập khác).
+5. Khôi phục tài khoản
+POST /api/v1/auth/forgot-password, POST /api/v1/auth/reset-password
+Yêu cầu khôi phục: Kiểm tra rate-limit trước khi tra DB (vượt ngưỡng trả 429 kèm Retry-After; lỗi bộ đếm trả 503 và không gửi mail). Luôn trả thông báo trung tính "Đã tiếp nhận yêu cầu, bạn sẽ nhận được email nếu đã đăng ký". Nếu email hợp lệ và tài khoản đang hoạt động: sinh token ngẫu nhiên, chỉ lưu token_hash vào Password_reset_token (TTL 15 phút), sau commit gửi email chứa liên kết khôi phục và username. Đặt mật khẩu mới: Thực hiện cập nhật nguyên tử trên token chưa dùng và còn hạn của tài khoản đang hoạt động: cập nhật password_hash mới, đánh dấu is_used = true cho mọi reset token chưa dùng của user đó, và tăng User.auth_version + 1 trong cùng transaction để vô hiệu hóa toàn bộ JWT cũ. Sau commit: đóng toàn bộ WebSocket và ngắt mọi phiên thoại/chia sẻ của tài khoản đó.
+ 
+ 
+4.2. Quan hệ bạn bè, Chặn và Tin nhắn riêng (DM)
+ 
+Tính năng
+Endpoint REST chính
+Hành vi và Xử lý của Server
+6. Tìm kiếm và Kết bạn
+GET /api/v1/users/search, POST /api/v1/friends/requests, PATCH /api/v1/friends/requests/{request_id}
+Gửi yêu cầu (POST): Truyền target_user_id. Từ chối tự kết bạn; kiểm tra đối phương hoạt động, chưa là bạn, chưa có yêu cầu PENDING và không có User_block ở bất kỳ chiều nào (thông báo lỗi chung, không lộ ai chặn ai). Tạo Relation với cặp chuẩn hóa (user_id_1 < user_id_2), request_id (Snowflake), requester_id, status = PENDING. Phát FRIEND_REQUEST tới người nhận. Phản hồi (PATCH): Người nhận gửi quyết định ACCEPT hoặc DECLINE theo request_id. Kiểm tra đúng người nhận, trạng thái đang PENDING và không có chặn 2 chiều. Nếu ACCEPT: đổi status = FRIEND, phát FRIEND_ADD cho hai bên (và DM_STATE_UPDATE nếu có DM cũ được mở khóa ghi). Nếu DECLINE: xóa dòng PENDING, phát FRIEND_REQUEST_UPDATE.
+7. Hủy kết bạn
+DELETE /api/v1/friends/{target_user_id}
+Xử lý: Thao tác idempotent (nếu không còn là bạn thì trả thành công). Trong 1 transaction: xóa Relation (status = FRIEND), chuyển mọi lời mời Kênh PENDING giữa hai người sang CANCELLED (time_resolved = NOW()). Giữ nguyên tư cách thành viên ở các Kênh chung; giữ lịch sử DM nhưng chuyển DM sang chế độ chỉ đọc. Phát FRIEND_REMOVE, INVITE_UPDATE và DM_STATE_UPDATE.
+8. Chặn người dùng
+POST /api/v1/blocks
+Input: target_user_id (cấm tự chặn; hai người có thể chặn nhau độc lập). Xử lý: Trong 1 transaction: tạo User_block (blocker_id, blocked_id) (idempotent nếu đã chặn), xóa Relation (PENDING hoặc FRIEND) nếu có, và chuyển các lời mời Kênh PENDING giữa hai người sang CANCELLED. Chuyển DM chung (nếu có) sang chỉ đọc. Phát BLOCK_LIST_UPDATE (chỉ tới các phiên của người chặn), kèm FRIEND_REMOVE / FRIEND_REQUEST_UPDATE, INVITE_UPDATE và DM_STATE_UPDATE (không tiết lộ ai là người chặn). Chặn ngăn kết bạn, mời trực tiếp và tương tác trong DM, nhưng không ẩn tin nhắn ở Phòng chung và không chặn gia nhập Kênh qua PUBLIC_LINK.
+9. Gỡ chặn người dùng
+DELETE /api/v1/blocks/{target_user_id}
+Xử lý: Chỉ xóa dòng User_block chiều actor_id -> target_user_id (giữ nguyên chiều ngược nếu đối phương cũng chặn). Phát BLOCK_LIST_UPDATE tới các phiên của người thực hiện. Không tự động khôi phục quan hệ bạn bè hay mở khóa DM (muốn nhắn tin lại phải kết bạn lại hợp lệ).
+10. Mở cuộc trò chuyện riêng (DM)
+POST /api/v1/dms
+Input: target_user_id. Kiểm tra hai người đang là FRIEND và không có User_block ở cả hai chiều. Xử lý: Tra DM_pair (user_id_1 < user_id_2). Nếu đã tồn tại thì trả thông tin Phòng DM đó. Nếu chưa có: trong 1 transaction (bảo vệ chống trùng bằng UNIQUE (user_id_1, user_id_2)), tạo Room (room_id, type = DM, is_private = true), DM_pair, 2 bản ghi Room_member và 2 bản ghi Message_read (last_read_sequence = 0). Phát ROOM_CREATE tới hai người nếu tạo mới.
+ 
+ 
+4.3. Quản lý Kênh, Thành viên, Nhóm Phòng và Phòng
+ 
+Tính năng
+Endpoint REST chính
+Hành vi và Xử lý của Server
+11. Tạo Kênh
+POST /api/v1/channels
+Input: channel_name và danh sách invitee_ids (tùy chọn). Xử lý: Trong 1 transaction, sinh channel_id (Snowflake) và invite_code ngẫu nhiên duy nhất, tạo Channel (join_mode = INVITE_ONLY, is_available = true, creator_id = actor_id) và Channel_member (role = CREATOR). Nếu có invitee_ids, thực hiện tạo lời mời cho từng người hợp lệ theo luồng Mời thành viên và trả kèm kết quả từng lời mời trong response.
+12. Sửa Kênh
+PATCH /api/v1/channels/{channel_id}
+Quyền: Creator hoặc Moderator. Xử lý: Cho phép cập nhật channel_name, icon_upload_id, background_upload_id, description, join_mode (INVITE_ONLY / PUBLIC_LINK). invite_code giữ nguyên; chuyển sang PUBLIC_LINK không hủy các lời mời PENDING hiện có. Sau commit phát CHANNEL_UPDATE tới toàn bộ thành viên Kênh.
+13. Xóa Kênh
+DELETE /api/v1/channels/{channel_id}
+Quyền: Chỉ Creator. Xử lý: Trong 1 transaction, đặt Channel.is_available = false (giữ nguyên dữ liệu Phòng, tin nhắn bên dưới nhưng chặn mọi truy cập) và chuyển toàn bộ lời mời PENDING của Kênh sang CANCELLED. Sau commit: phát CHANNEL_DELETE tới các thành viên, INVITE_UPDATE tới người liên quan, ngắt toàn bộ phiên thoại/chia sẻ thuộc Kênh.
+14. Thêm thành viên vào Kênh
+POST /api/v1/channels/{channel_id}/invitations, PATCH /api/v1/invitations/{invitation_id}, POST /api/v1/channel-links/{invite_code}/join
+Luồng Chỉ mời (INVITE_ONLY): Creator/Moderator mời một người bạn (FRIEND, không chặn 2 chiều, chưa thuộc Kênh, chưa có lời mời PENDING). Sinh invitation_id, lưu Channel_invitation (PENDING) và phát INVITE_CREATE. Khi người nhận phản hồi PATCH: nếu DECLINE thì đổi DECLINED, phát INVITE_UPDATE. Nếu ACCEPT thì kiểm tra lại Kênh khả dụng, điều kiện bạn bè/không chặn và người mời vẫn còn quyền Creator/Moderator trong Kênh (nếu mất điều kiện thì chuyển CANCELLED, phát INVITE_UPDATE và báo không thể tham gia); nếu hợp lệ thì thêm Channel_member (MEMBER), khởi tạo Message_read ở các Phòng được xem bằng Room.last_message_sequence hiện tại, chuyển ACCEPTED trong cùng transaction, phát INVITE_UPDATE và MEMBER_ADD. Luồng Liên kết công khai (PUBLIC_LINK): Xem trước Kênh qua GET /api/v1/channel-links/{invite_code} và xác nhận vào qua POST .../join. Nếu Kênh khả dụng và đang bật PUBLIC_LINK, thêm Channel_member (MEMBER) (idempotent nếu đã trong Kênh), khởi tạo Message_read tại mốc hiện tại và phát MEMBER_ADD.
+15. Khai trừ và Rời Kênh
+DELETE /api/v1/channels/{channel_id}/members/{user_id}, DELETE /api/v1/channels/{channel_id}/members/me
+Quyền: Creator khai trừ được Moderator và Member; Moderator chỉ khai trừ Member. Creator muốn tự rời phải nhượng quyền Creator trước. Xử lý: Trong 1 transaction: xóa Channel_member, xóa toàn bộ Room_member của người đó trong Kênh, hủy các lời mời PENDING do người đó gửi trong Kênh (CANCELLED). Sau commit: phát MEMBER_REMOVE (tới thành viên còn lại và người rời), INVITE_UPDATE, ngắt phiên thoại/chia sẻ của người đó trong Kênh. Khai trừ không cấm vĩnh viễn; nếu sau này vào lại Kênh thì nhận vai trò MEMBER mới (không tự khôi phục quyền Phòng riêng cũ) và nâng last_read_sequence lên tối thiểu bằng last_message_sequence lúc vào lại.
+16. Quản lý vai trò và Nhượng quyền
+PATCH /api/v1/channels/{channel_id}/members/{user_id}/role, POST /api/v1/channels/{channel_id}/transfer-ownership
+Chỉ định/Gỡ Moderator (PATCH): Chỉ Creator được đổi vai trò thành viên giữa MODERATOR và MEMBER. Khi hạ từ MODERATOR xuống MEMBER, hủy các lời mời Kênh PENDING do người đó gửi trong cùng transaction (giữ nguyên is_room_mod nếu họ từng được gán riêng trong Phòng riêng mà họ vẫn là thành viên). Nhượng quyền (POST): Creator chuyển quyền cho một thành viên đang hoạt động trong Kênh; cập nhật đồng thời Channel.creator_id, người nhận thành CREATOR và Creator cũ thành MODERATOR trong 1 transaction. Đồng bộ sau commit: Phát ROLE_UPDATE, INVITE_UPDATE (nếu có); với người vừa thêm/mất quyền xem Phòng riêng do đổi vai trò cấp Kênh, phát ROOM_CREATE / ROOM_DELETE tương ứng và ngắt phiên thoại/chia sẻ ở Phòng không còn quyền.
+17. Quản lý Nhóm Phòng (Category)
+POST / PATCH / DELETE / PUT trên /api/v1/channels/{channel_id}/categories
+Quyền: Creator hoặc Moderator. Xử lý: Tạo mới (POST), sửa tên/vị trí (PATCH), kéo thả sắp xếp lại toàn bộ danh sách category_ids (PUT .../categories/order). Khi xóa nhóm (DELETE): xóa cứng Room_Category, đặt category_id = NULL cho mọi Phòng thuộc nhóm đó và nối các Phòng khả dụng của nhóm vừa xóa vào cuối danh sách Phòng không nhóm trong cùng transaction (không xóa Phòng). Phát ROOM_CATEGORY_CREATE / UPDATE / DELETE và ROOM_UPDATE cho các Phòng đổi vị trí/nhóm.
+18. Tạo, Sửa, Sắp xếp và Xóa Phòng
+POST / PATCH / DELETE / PUT trên /api/v1/channels/{channel_id}/rooms
+Tạo Phòng (POST): Creator/Moderator tạo Phòng TEXT hoặc VOICE, chọn is_private, category_id (tùy chọn), vị trí và danh sách member_ids (nếu riêng tư). Khởi tạo Message_read (last_read_sequence = 0) cho các thành viên có quyền xem (nếu là TEXT), phát ROOM_CREATE. Sửa Phòng (PATCH): Creator/Moderator sửa được tên, is_private, nhóm, thứ tự, danh sách thành viên và chỉ định/gỡ is_room_mod. Mod Phòng riêng chỉ được sửa tên và thêm/bớt thành viên thường (không được xóa Mod khác/chính mình hay đổi is_private/nhóm/thứ tự). Khi chuyển Riêng tư sang Công khai: xóa các bản ghi Room_member cũ của Phòng đó; khi chuyển Công khai sang Riêng tư: truyền danh sách thành viên mới. Kéo thả thứ tự các Phòng khả dụng qua PUT .../rooms/order. Phát ROOM_UPDATE (người giữ quyền), ROOM_CREATE (người mới có quyền), ROOM_DELETE và ngắt thoại/chia sẻ (người mất quyền). Xóa Phòng (DELETE): Chỉ Creator/Moderator được xóa mềm (Room.is_available = false), cập nhật lại thứ tự các Phòng khả dụng còn lại, ngắt phiên thoại/chia sẻ đang chạy và phát ROOM_DELETE.
+ 
+ 
+4.4. Nhắn tin, Tệp đính kèm, Biểu cảm và Trạng thái đọc
+ 
+Tính năng
+Endpoint REST chính
+Hành vi và Xử lý của Server
+19. Gửi tin và Xem lịch sử
+POST / GET /api/v1/rooms/{room_id}/messages
+Gửi tin (POST): Gửi client_id (chuỗi chống trùng do Client sinh), content và danh sách upload_ids (tùy chọn). Phòng phải là TEXT hoặc DM (không chỉ đọc); tin phải có content không toàn khoảng trắng hoặc ít nhất 1 upload_id hợp lệ. Kiểm tra chống trùng theo UNIQUE (room_id, sender_id, client_id): nếu đã tồn tại thì trả lại ngay bản ghi Message đó mà không tạo mới hay phát lại sự kiện. Nếu chưa có: kiểm tra các upload_id thuộc đúng người gửi, đúng room_id, đang STAGED và còn hạn; trong 1 transaction, khóa dòng Room để tăng last_message_sequence + 1, tạo Message (message_id, room_sequence), gắn Message_Attachment và đổi File_upload sang ATTACHED. Sau commit phát MESSAGE_CREATE. Xem lịch sử (GET): Phân trang cursor theo before_sequence hoặc after_sequence (kèm last_message_sequence hiện tại của Phòng). Mỗi tin trả kèm tổng hợp số lượng reaction theo loại và reaction của chính người xem.
+20. Tệp đính kèm (Presigned URL)
+POST /api/v1/rooms/{room_id}/uploads/presign, GET /api/v1/attachments/{attachment_id}/url
+Tải lên: Client gửi metadata (file_name, mime_type, file_size_bytes) xin quyền upload. Server kiểm tra quyền gửi tại Phòng, kích thước (<= 25 MB) và định dạng cho phép (PNG, JPEG, WebP, PDF, TXT, CSV, DOCX, XLSX, PPTX, ZIP), tạo File_upload (upload_id, status = STAGED, expires_at = +3600s) và trả upload_id kèm Presigned PUT URL (ràng buộc đúng Content-Length và Content-Type). Client PUT thẳng tệp lên Object Storage rồi gắn upload_id khi gửi tin (Server xác nhận object tồn tại và hợp lệ trước khi chuyển ATTACHED; mỗi upload_id gắn tối đa 1 tin). Tải xuống: Client gọi GET .../attachments/{attachment_id}/url; Server kiểm tra quyền đọc hiện tại tại Phòng/DM rồi trả Presigned GET URL ngắn hạn (TTL 60–120 giây). Dọn rác: Tệp STAGED quá hạn 3600s chưa gắn tin hoặc tệp của tin nhắn bị xóa được chuyển sang DELETE_PENDING; background worker quét định kỳ xóa object vật lý trên Object Storage rồi xóa dòng File_upload.
+21. Biểu cảm (Reaction)
+PUT / DELETE /api/v1/rooms/{room_id}/messages/{message_id}/reactions/me
+Xử lý: Kiểm tra quyền xem Phòng và DM không ở trạng thái chỉ đọc. Mỗi (message_id, user_id) có tối đa 1 reaction: PUT với reaction_type để thêm mới hoặc đổi biểu cảm (upsert); DELETE để gỡ biểu cảm của chính mình. Sau commit phát MESSAGE_REACTION_UPDATE. Danh sách chi tiết người thả reaction trên một tin tải riêng theo trang qua GET khi người dùng bấm mở xem.
+22. Đánh dấu đã đọc và Số chưa đọc
+PUT /api/v1/rooms/{room_id}/read-state
+Cập nhật mốc đọc (PUT): Client gửi last_read_sequence của tin vừa đọc tới. Server kiểm tra quyền đọc (DM chỉ đọc vẫn được cập nhật mốc đọc), cập nhật Message_read.last_read_sequence = GREATEST(current, input) (không vượt quá Room.last_message_sequence). Nếu mốc thực sự tăng lên, cập nhật last_read_at và phát MESSAGE_READ_UPDATE. Client tự hiển thị dấu "đã xem" của từng thành viên tại tin nhắn còn tồn tại lớn nhất có room_sequence <= last_read_sequence (bỏ qua nếu last_read_sequence = 0). Đếm tin chưa đọc: Khi tải danh sách Phòng/DM, số tin chưa đọc là số tin còn tồn tại có room_sequence > last_read_sequence và sender_id != actor_id (truy vấn giới hạn tối đa 100 bản ghi để hiển thị 99+).
+23. Chỉnh sửa và Xóa tin nhắn
+PATCH / DELETE /api/v1/rooms/{room_id}/messages/{message_id}
+Sửa tin (PATCH): Chỉ tác giả được sửa (DM không chỉ đọc); nội dung mới không được rỗng/toàn khoảng trắng trừ khi tin vẫn còn tệp đính kèm. Cập nhật content và time_edited, giữ nguyên room_sequence, phát MESSAGE_UPDATE. Xóa tin (DELETE): Tác giả tự xóa, hoặc Creator/Moderator Kênh, hoặc Mod Phòng riêng trong Phòng mình (DM chỉ tác giả được xóa khi DM không chỉ đọc). Trong 1 transaction: đánh dấu các File_upload đính kèm sang DELETE_PENDING, xóa cứng Message (cascade Message_reaction và Message_Attachment); giữ nguyên Room.last_message_sequence và Message_read. Sau commit phát MESSAGE_DELETE.
+ 
+ 
+4.5. Đàm thoại (Voice) và Chia sẻ màn hình (LiveKit)
+ 
+Tính năng
+Endpoint / Giao thức
+Hành vi và Xử lý của Server
+24. Đàm thoại thời gian thực
+POST /api/v1/rooms/{room_id}/voice/join, DELETE /api/v1/rooms/{room_id}/voice/leave
+Quy tắc 1 phiên thoại/tài khoản: Mỗi người dùng chỉ có tối đa 1 phiên thoại đang hoạt động trên toàn hệ thống. Tham gia (POST): Kiểm tra quyền vào Phòng loại VOICE. Nếu tài khoản đang có phiên thoại cũ (ở Phòng khác hoặc thiết bị khác), Server gọi LiveKit API ngắt participant của phiên cũ, xóa phiên cũ và gửi VOICE_STATE_UPDATE (kèm cờ chuyển thiết bị cho phiên cũ). Tiếp theo, Server tạo Voice_session (voice_session_id Snowflake, user_id, room_id, session_jti) và cấp LiveKit Access Token (nhúng voice_session_id vào metadata của participant, giới hạn đúng room_id, TTL khởi tạo 5 phút). Client dùng token kết nối WebRTC tới LiveKit và hiển thị vòng sáng người đang nói qua tín hiệu active-speaker của SDK. Rời phòng (DELETE) và Đồng bộ: Client gửi DELETE kèm voice_session_id (hoặc LiveKit gửi Webhook participant_joined / participant_left). Server luôn đối chiếu đúng voice_session_id (để callback trễ của phiên cũ không bao giờ xóa nhầm phiên mới), cập nhật Voice_session và phát VOICE_STATE_UPDATE tới những người có quyền xem Phòng. Khi người dùng mất quyền vào Phòng/Kênh, bị khóa tài khoản, đăng xuất phiên sở hữu hoặc Phòng/Kênh bị xóa mềm, Server chủ động gọi LiveKit RemoveParticipant để ngắt ngay.
+25. Chia sẻ màn hình
+LiveKit Track + Webhook trong Phòng VOICE
+Bắt đầu và Xem: Thành viên đang ở trong Phòng VOICE được publish tối đa 1 luồng chia sẻ màn hình (SCREEN_SHARE video/audio track, 720p–1080p, 30–60 fps, bật Simulcast). Nhiều thành viên trong cùng một Phòng VOICE có thể chia sẻ màn hình đồng thời. Khi LiveKit xác nhận track_published (qua Webhook có chữ ký xác thực), Server kiểm tra phiên voice_session_id hợp lệ, ghi nhận trạng thái đang chia sẻ và phát SCREEN_SHARE_START (nếu một tài khoản cố publish track màn hình thứ hai thì Server từ chối/thu hồi track thừa). Người khác trong Phòng chỉ subscribe luồng video màn hình khi bấm chọn xem (hoặc subscribe tầng độ phân giải thấp của Simulcast khi xem lưới thu nhỏ); lúc không xem không tốn băng thông video. Dừng chia sẻ: Khi người dùng tắt chia sẻ, rời Phòng VOICE, mất quyền hoặc rớt kết nối (Webhook track_unpublished / participant_left), Server xóa trạng thái chia sẻ của đúng voice_session_id đó và phát SCREEN_SHARE_STOP. Một worker định kỳ mỗi 60 giây đối soát danh sách Voice_session với LiveKit để dọn các phiên mồ côi nếu rớt mạng/mất webhook.
+ 
+ 
+
+ 
+5. Quy tắc toàn vẹn dữ liệu và Chiến lược xóa (Tóm tắt ERD)
+ 
+Bảng / Nhóm thực thể
+Ràng buộc toàn vẹn cốt lõi
+Chiến lược xóa
+User / User_detail
+UNIQUE(LOWER(username)), UNIQUE(LOWER(email)). auth_version mặc định 0, chỉ tăng khi đổi mật khẩu hoặc khóa tài khoản.
+Xóa mềm / Khóa (is_available = false, tăng auth_version). FK từ các bảng khác tới User dùng RESTRICT.
+Channel / Room
+Channel luôn có đúng 1 CREATOR khớp Channel.creator_id. Tên Phòng duy nhất trong các Phòng is_available = true cùng Kênh. DM có DM_pair duy nhất theo (user_id_1 < user_id_2).
+Xóa mềm (is_available = false). Xóa Kênh không cần sửa cờ is_available của từng Phòng con (vì mọi kiểm tra quyền đều kiểm tra cả Kênh lẫn Phòng).
+Room_Category
+Tên nhóm duy nhất trong các nhóm thuộc cùng Kênh; cùng channel_id với các Phòng trực thuộc.
+Xóa cứng: đưa Room.category_id = NULL trước khi xóa nhóm trong cùng transaction; không xóa Phòng.
+Relation / User_block
+Relation lưu (user_id_1 < user_id_2), cấm tồn tại đồng thời với User_block ở bất kỳ chiều nào. User_block có hướng (blocker_id, blocked_id).
+Xóa cứng bản ghi khi từ chối kết bạn, hủy kết bạn, bị chặn hoặc gỡ chặn.
+Message / Reaction / Attachment
+UNIQUE (room_id, room_sequence), UNIQUE (room_id, sender_id, client_id). Reaction: UNIQUE (message_id, user_id).
+Xóa cứng Message: cascade xóa Message_reaction và Message_Attachment; không giảm Room.last_message_sequence.
+Message_read
+PRIMARY KEY (user_id, room_id), lưu last_read_sequence (chỉ tăng) và last_read_at. Không đặt FK tới message_id.
+Giữ lại khi xóa tin nhắn; xóa theo CASCADE chỉ khi xóa cứng User/Room (nếu có).
+File_upload
+UNIQUE (storage_key). Trạng thái: STAGED -> ATTACHED -> DELETE_PENDING.
+Dọn bất đồng bộ: đánh dấu DELETE_PENDING trong DB transaction; worker xóa tệp trên Object Storage thành công rồi mới xóa dòng File_upload.
+Voice_session
+UNIQUE (user_id) đảm bảo tối đa 1 phiên thoại đang hoạt động trên mỗi tài khoản; lưu kèm is_screen_sharing.
+Xóa cứng ngay khi rời phòng, chuyển thiết bị, thu hồi quyền hoặc worker đối soát phát hiện participant không còn trên LiveKit.
+ 
+ 
+
+ 
+6. Cơ chế đồng bộ Client – Server
+ 
+1. Khởi tạo và Kết nối lại (Bootstrap / Reconnect):
+Client duy trì kết nối WebSocket có ping/pong định kỳ (25 giây). Không chạy polling toàn phần 30 giây/lần khi kết nối WebSocket đang hoạt động bình thường.
+Client chỉ gọi GET tải lại danh sách/trạng thái khi: (a) Vừa đăng nhập / mở ứng dụng; (b) WebSocket vừa kết nối lại sau khi đứt mạng; (c) Người dùng bấm mở vào một Phòng chưa được tải lịch sử.
+2. Thứ tự tin nhắn và Phát hiện hổng sự kiện (Gap Detection):
+Thứ tự hiển thị tin nhắn dựa hoàn toàn vào room_sequence (không dựa vào thứ tự gói tin đến qua mạng).
+Với tin vừa gửi (Optimistic UI): Client đối chiếu tin tạm với sự kiện MESSAGE_CREATE / response bằng (sender_id, client_id) để gán message_id và room_sequence chính thức, không bị hiển thị đúp.
+Nếu Phòng đang mở có mốc cục bộ local_seq mà nhận được MESSAGE_CREATE có room_sequence > local_seq + 1, Client gọi GET .../messages?after_sequence={local_seq} để lấp đầy các tin bị rớt mạng.
+3. Thu hồi quyền tức thì:
+Khi nhận CHANNEL_DELETE, MEMBER_REMOVE, ROOM_DELETE hoặc ROLE_UPDATE làm mất quyền xem, Client xóa ngay tài nguyên và cache cục bộ của tài nguyên đó khỏi giao diện. Mọi response của các request GET cũ khởi phát trước thời điểm mất quyền phải bị bỏ qua nếu tài nguyên đã bị gỡ khỏi store cục bộ.
+ 
+
+ 
+7. Danh mục sự kiện WebSocket
+ 
+Tên sự kiện
+Thời điểm phát (sau commit)
+Phạm vi người nhận
+CHANNEL_UPDATE
+Sửa thông tin Kênh hoặc chế độ gia nhập
+Mọi thành viên hiện tại của Kênh
+CHANNEL_DELETE
+Kênh bị xóa mềm
+Mọi thành viên Kênh tại thời điểm xóa
+INVITE_CREATE / INVITE_UPDATE
+Tạo mới lời mời hoặc lời mời chuyển ACCEPTED / DECLINED / CANCELLED
+Các phiên của người mời và người nhận lời mời
+MEMBER_ADD / MEMBER_REMOVE
+Thành viên gia nhập, tự rời hoặc bị khai trừ khỏi Kênh
+Mọi thành viên Kênh (và người vừa rời/bị khai trừ)
+ROLE_UPDATE
+Thay đổi vai trò Moderator hoặc nhượng quyền Creator
+Mọi thành viên Kênh
+ROOM_CATEGORY_CREATE / UPDATE / DELETE
+Tạo, sửa, sắp xếp lại hoặc xóa Nhóm Phòng
+Mọi thành viên Kênh
+ROOM_CREATE / ROOM_UPDATE / ROOM_DELETE
+Tạo/sửa/sắp xếp/xóa mềm Phòng, tạo DM mới, hoặc cấp/thu hồi quyền xem Phòng riêng
+Các thành viên đang có quyền xem Phòng (hoặc vừa mất quyền với ROOM_DELETE; 2 thành viên với DM)
+MESSAGE_CREATE / UPDATE / DELETE
+Tin nhắn được gửi mới, chỉnh sửa hoặc xóa cứng
+Người đang có quyền xem Phòng/DM tại thời điểm phát
+MESSAGE_REACTION_UPDATE
+Thêm, đổi hoặc gỡ biểu cảm trên tin nhắn
+Người đang có quyền xem Phòng/DM
+MESSAGE_READ_UPDATE
+last_read_sequence của một người dùng tiến lên
+Người đang có quyền xem Phòng/DM
+FRIEND_REQUEST / FRIEND_REQUEST_UPDATE
+Có lời mời kết bạn mới, hoặc lời mời bị từ chối/hủy
+Người nhận (và người gửi với UPDATE)
+FRIEND_ADD / FRIEND_REMOVE
+Trở thành bạn bè hoặc hủy kết bạn
+Cả hai người dùng
+BLOCK_LIST_UPDATE
+Chặn hoặc gỡ chặn một tài khoản
+Chỉ các phiên của chính người thực hiện chặn/gỡ chặn
+DM_STATE_UPDATE
+DM chuyển giữa trạng thái cho phép ghi và chỉ đọc
+Hai thành viên của cuộc DM (không lộ chiều chặn)
+VOICE_STATE_UPDATE
+Tham gia, rời, bị ngắt hoặc chuyển thiết bị phiên thoại (voice_session_id)
+Người có quyền xem Phòng (cờ chuyển thiết bị chỉ gửi riêng cho phiên cũ của tài khoản đó)
+SCREEN_SHARE_START / SCREEN_SHARE_STOP
+Bắt đầu hoặc kết thúc chia sẻ màn hình đã xác nhận từ LiveKit
+Người có quyền xem trạng thái Phòng VOICE
+ 
+ 
+
+ 
+8. Bảng hằng số cấu hình và Tiêu chí nghiệm thu cốt lõi
+ 
+8.1. Hằng số giới hạn mặc định (config.json)
+ 
+Nhóm
+Tham số
+Giá trị mặc định
+Tài khoản và Hồ sơ
+Độ dài mật khẩu / Username / Họ tên / Email / SĐT / Địa chỉ
+12–128 ký tự / tối đa 50 / 100 / 100 / 15 / 500 ký tự
+Xác thực và Bảo vệ
+TTL JWT ứng dụng / TTL Reset token / TTL LiveKit join token
+7 ngày / 15 phút / 5 phút
+Rate-limit Khôi phục
+Giới hạn yêu cầu quên mật khẩu (cửa sổ 900 giây)
+Tối đa 3 lần / email và 20 lần / IP
+Kênh và Ảnh giao diện
+Mô tả Kênh / Dung lượng Avatar và Icon Kênh / Background Kênh
+Tối đa 2.000 ký tự / 2.000.000 byte (2 MB) / 5.000.000 byte (5 MB)
+Tin nhắn và Phân trang
+Độ dài văn bản / Số tệp đính kèm mỗi tin / Kích thước trang lịch sử
+Tối đa 4.000 ký tự / 5 tệp / mặc định 50 (tối đa 100 phần tử/trang)
+Tệp đính kèm
+Dung lượng tối đa mỗi tệp / Hạn giữ tệp STAGED / TTL Presigned GET
+25.000.000 byte (25 MB) / 3.600 giây / 120 giây
+Mạng và Worker
+WebSocket ping / Worker dọn tệp và đối soát LiveKit / Retry an toàn
+25 giây / 60 giây/lần / tối đa 3 lần (exponential backoff + jitter)
+ 
+
+8.2. Năm tiêu chí nghiệm thu bắt buộc (Acceptance Guardrails)
+1. AT-01 (Định danh và Bảo mật): Mọi Snowflake ID 64-bit qua JSON đều ở dạng string; actor luôn lấy từ JWT; không rò rỉ dữ liệu cá nhân/nội bộ hoặc thông tin chiều chặn của đối phương.
+2. AT-02 (Tính nguyên tử): Thao tác ghi nhiều bảng liên quan nằm trong cùng DB transaction; rollback hoặc lỗi phân quyền tuyệt đối không phát sự kiện WebSocket giả.
+3. AT-03 (Chống trùng và Thế hệ phiên): Gửi lại cùng client_id không tạo tin nhắn thứ hai; callback trễ của voice_session_id cũ không làm ngắt phiên thoại mới; luôn duy trì đúng 1 Creator/Kênh, tối đa 1 DM/cặp, 1 reaction/người/tin và 1 phiên thoại/tài khoản.
+4. AT-04 (Đồng bộ quyền và Mất mạng): Thu hồi quyền (khai trừ, xóa mềm, hạ vai trò, khóa tài khoản) có hiệu lực ngay trên cả REST, WebSocket, Presigned URL tải tệp và LiveKit media; mất kết nối tạm thời tự phục hồi đầy đủ tin nhắn thiếu qua room_sequence khi kết nối lại.
+5. AT-05 (Dọn tài nguyên bất đồng bộ): Xóa tin nhắn hoặc hết hạn upload STAGED luôn thu hồi sạch object vật lý trên Object Storage qua worker mà không xóa nhầm tệp đã ATTACHED.
