@@ -181,6 +181,8 @@ button svg { flex-shrink: 0; }
 .field input:hover { border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
 .field input::placeholder { color: var(--muted); opacity: .95; }
 .field input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+.field input[aria-invalid=true] { border-color: var(--accent); }
+.field-error { margin: 8px 0 0; color: var(--ink); background: color-mix(in srgb, var(--accent) 15%, var(--surface)); border-radius: 6px; padding: 9px 12px; font-size: 11px; line-height: 1.6; }
 .password-field { position: relative; }
 .password-field input { padding-right: 43px; }
 .password-toggle { position: absolute; right: 0; top: 0; width: 45px; height: 45px; display: grid; place-items: center; background: transparent; border: 0; border-radius: 6px; color: var(--muted); }
@@ -360,6 +362,16 @@ button svg { flex-shrink: 0; }
 .app-login .signup-prompt, .app-login .signup-prompt > button { font-size: 12px; }
 .app-login .form-bottom-copy { font-size: 10px; }
 .app-login .login-footer { font-size: 9px; }
+.is-register .login-form-inner { max-width: 440px; }
+.signup-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+.signup-fields .field { margin-bottom: 14px; }
+.signup-hint { margin: 0 0 16px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.is-register .form-intro { margin-bottom: 18px; }
+.is-register .form-bottom { margin-top: 20px; }
+@container (max-width: 650px) {
+  .is-register .signup-fields { grid-template-columns: 1fr; }
+  .is-register .login-form-area { padding-top: 105px; padding-bottom: 90px; }
+}
 @container (min-width: 651px) {
   .app-login .scene-copy { margin: 120px 48px 0; }
   .app-login .scene-copy h2 { font-size: clamp(36px, 4cqw, 58px); }

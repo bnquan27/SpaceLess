@@ -43,6 +43,6 @@ Thêm component shadcn bằng `npx shadcn@latest add <component>` khi cần. Th�
 
 ## Phạm vi
 
-Đây là trang đăng nhập Orbit trong app desktop để kiểm tra giao diện. Form chưa gửi dữ liệu mạng; khôi phục chưa gửi mail; tạo tài khoản chỉ có trạng thái thông báo. Component hỗ trợ callback bất đồng bộ, loading và lỗi để nối xác thực thật sau. LiveKit sẽ dùng cho phòng VOICE theo đặc tả; chưa có tính năng gọi trong bản này.
+Trang đăng nhập và đăng ký Orbit trong app desktop cho phép kiểm tra giao diện và thông tin nhập. Các form chưa gửi dữ liệu mạng; khôi phục chưa gửi mail và đăng ký chưa tạo tài khoản. Component đăng nhập hỗ trợ callback bất đồng bộ, loading và lỗi để nối xác thực thật sau. LiveKit sẽ dùng cho phòng VOICE theo đặc tả; chưa có tính năng gọi trong bản này.
 
 Tài liệu hệ thống: `docs/Dac_ta_he_thong_MVP_v1.docx`. Đăng nhập theo đặc tả dùng tên đăng nhập + mật khẩu, dù mẫu tham khảo ban đầu dùng email.

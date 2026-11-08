@@ -1,0 +1,29 @@
+[package]
+name = "spaceless-server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+argon2 = "0.5"
+aws-config = { version = "1", default-features = false, features = ["rt-tokio", "rustls", "credentials-process"] }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "rustls", "default-https-client"] }
+axum = { version = "0.8", features = ["ws"] }
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+jsonwebtoken = "9"
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls", "ring", "webpki-roots"] }
+rand = "0.8"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-webpki", "postgres", "chrono", "uuid", "json", "migrate", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "signal"] }
+tokio-util = { version = "0.7", features = ["io"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+unicode-normalization = "0.1"
+uuid = { version = "1", features = ["serde", "v4"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }

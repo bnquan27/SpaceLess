@@ -8,13 +8,15 @@ Stack người dùng xác nhận: React frontend, Rust + Tauri desktop/backend v
 
 Form nhận callback `onSubmit({ username, password, rememberMe })`. Không cung cấp callback thì chỉ kiểm tra form và hiện thông báo xem thử, không giả lập phiên đăng nhập. Không lưu thông tin xác thực. Bộ chọn chỉ lưu ID hướng thiết kế trong localStorage, có xử lý trường hợp lưu trữ bị chặn.
 
-## Ranh giới cho phần chức năng tiếp theo
+`server/` chứa dịch vụ Axum và PostgreSQL, tách khỏi tiến trình desktop. Xem [cách chạy máy chủ](rust-server-run.md) và [hợp đồng API](rust-server-api.md).
+
+## Ranh giới giữa desktop và dịch vụ
 
 - React: form, view, state hiển thị, trạng thái mạng và media.
 - Rust + Tauri: native integration và logic backend được phân công; không đưa khóa máy chủ vào ứng dụng phân phối.
-- Dịch vụ REST `/api/v1` và WebSocket dùng chung: danh tính, quyền, dữ liệu, giao dịch và sự kiện theo đặc tả. Mô hình triển khai dịch vụ Rust dùng chung, DB và hosting chưa được chọn. Không coi local Tauri process là máy chủ có thẩm quyền giữa nhiều người dùng.
+- Dịch vụ REST `/api/v1` và WebSocket dùng chung xử lý danh tính, quyền, dữ liệu, giao dịch và sự kiện. Một tiến trình API sở hữu outbox của cơ sở dữ liệu.
 - LiveKit: WebRTC âm thanh/video/chia sẻ màn hình trong phòng VOICE. Chỉ kết nối sau khi máy chủ kiểm tra quyền và cấp token ngắn hạn. Token signing cần nằm trên máy chủ tin cậy. Chưa cài SDK media vào bản comp đăng nhập vì chưa có phần gọi.
-- Object storage: presigned upload/download theo đặc tả, không chuyển tệp lớn qua REST server.
+- Kho đối tượng nhận tải lên qua URL ký trước. Cổng tải riêng kiểm tra lại quyền cho mỗi yêu cầu tải.
 
 Sơ đồ luồng dự kiến: React → Tauri/Rust + REST service; service → WebSocket → client. Media client ↔ LiveKit, với token do service cấp. Điểm phân chia HTTP/WebSocket giữa React và Rust cần quyết định trước khi triển khai chức năng.
 
