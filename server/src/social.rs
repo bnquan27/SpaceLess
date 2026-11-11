@@ -87,7 +87,7 @@ async fn search(
         return Err(ApiError::bad("Số kết quả phải từ 1 đến 50."));
     }
     let mut rows = sqlx::query_as::<_, PublicProfile>(
-        "SELECT u.id, u.username, d.full_name, d.avatar_upload_id, CASE \
+        "SELECT u.id, u.username, u.full_name, d.avatar_upload_id, CASE \
             WHEN b.blocker_id IS NOT NULL THEN 'BLOCKED' \
             WHEN r.status = 'FRIEND' THEN 'FRIEND' \
             WHEN r.requester_id = $1 THEN 'PENDING_OUTGOING' \
@@ -97,7 +97,7 @@ async fn search(
          LEFT JOIN relations r ON r.lo = least($1, u.id) AND r.hi = greatest($1, u.id) \
          LEFT JOIN user_blocks b ON b.blocker_id = $1 AND b.blocked_id = u.id \
          WHERE u.id <> $1 AND u.id > $2 AND u.is_available \
-            AND (strpos(identity_key(u.username), identity_key($3)) > 0 OR strpos(identity_key(d.full_name), identity_key($3)) > 0) \
+            AND (strpos(identity_key(u.username), identity_key($3)) > 0 OR strpos(identity_key(u.full_name), identity_key($3)) > 0) \
          ORDER BY u.id LIMIT $4",
     )
     .bind(actor.user_id.0)
@@ -466,9 +466,9 @@ async fn emit_dm_state(conn: &mut PgConnection, pair: Pair, is_read_only: bool) 
     Ok(())
 }
 
-fn dm_view(pair: Pair, room_id: Id, room_name: &str, last_sequence: i64) -> Value {
+fn dm_view(pair: Pair, room_id: Id, last_sequence: i64) -> Value {
     json!({
-        "room_id": room_id, "channel_id": null, "room_name": room_name, "type": "DM", "is_private": true,
+        "room_id": room_id, "channel_id": null, "room_name": "Tin nhắn riêng", "type": "DM", "is_private": true,
         "member_ids": [pair.lo, pair.hi], "is_read_only": false, "last_message_sequence": last_sequence.to_string(),
     })
 }
@@ -492,30 +492,23 @@ async fn open_dm(
     if !friends || !can_relate(&mut tx, pair, input.target_user_id).await? {
         return Err(pair_conflict());
     }
-    let existing = sqlx::query_as::<_, (i64, String, i64)>(
-        "SELECT r.id, r.name, r.last_sequence FROM dm_pairs p JOIN rooms r ON r.id = p.room_id \
+    let existing = sqlx::query_as::<_, (i64, i64)>(
+        "SELECT r.id, r.last_sequence FROM dm_pairs p JOIN rooms r ON r.id = p.room_id \
          WHERE p.lo = $1 AND p.hi = $2 AND r.is_available",
     )
     .bind(pair.lo.0)
     .bind(pair.hi.0)
     .fetch_optional(&mut *tx)
     .await?;
-    if let Some((id, name, last_sequence)) = existing {
+    if let Some((id, last_sequence)) = existing {
         tx.commit().await?;
-        return Ok((
-            StatusCode::OK,
-            Json(dm_view(pair, Id(id), &name, last_sequence)),
-        ));
+        return Ok((StatusCode::OK, Json(dm_view(pair, Id(id), last_sequence))));
     }
     let room = state.id().await?;
-    let room_name = "Tin nhắn riêng";
-    sqlx::query(
-        "INSERT INTO rooms (id, name, kind, private, position) VALUES ($1, $2, 'DM', true, 0)",
-    )
-    .bind(room.0)
-    .bind(room_name)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("INSERT INTO rooms (id, kind, private) VALUES ($1, 'DM', true)")
+        .bind(room.0)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("INSERT INTO dm_pairs (lo, hi, room_id) VALUES ($1, $2, $3)")
         .bind(pair.lo.0)
         .bind(pair.hi.0)
@@ -534,7 +527,7 @@ async fn open_dm(
         .bind(pair.hi.0)
         .execute(&mut *tx)
         .await?;
-    let view = dm_view(pair, room, room_name, 0);
+    let view = dm_view(pair, room, 0);
     sync::emit(&mut tx, Scope::Room(room), "ROOM_CREATE", view.clone()).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(view)))

@@ -43,6 +43,7 @@ struct Event {
 enum Signal {
     Event(Arc<Event>),
     Disconnect(Id, Option<Uuid>),
+    DisconnectToken(Id, Uuid),
 }
 
 #[derive(Clone)]
@@ -121,6 +122,10 @@ pub async fn disconnect(state: &AppState, user: Id, session: Option<Uuid>) {
     let _ = state.realtime.0.send(Signal::Disconnect(user, session));
 }
 
+pub async fn disconnect_token(state: &AppState, user: Id, jti: Uuid) {
+    let _ = state.realtime.0.send(Signal::DisconnectToken(user, jti));
+}
+
 pub async fn dispatch(state: AppState) {
     let mut interval = tokio::time::interval(Duration::from_millis(100));
     loop {
@@ -195,8 +200,9 @@ async fn socket_loop(
                 _ => break,
             },
             signal = rx.recv() => match signal {
-                Ok(Signal::Disconnect(user,jti)) if user == actor.user_id && jti.is_none_or(|jti| jti == actor.jti) => break,
-                Ok(Signal::Disconnect(..)) => {},
+                Ok(Signal::Disconnect(user,sid)) if user == actor.user_id && sid.is_none_or(|sid| sid == actor.sid) => break,
+                Ok(Signal::DisconnectToken(user,jti)) if user == actor.user_id && jti == actor.jti => break,
+                Ok(Signal::Disconnect(..) | Signal::DisconnectToken(..)) => {},
                 Ok(Signal::Event(event)) => {
                     if let Some(value) = delivery(state, &actor, &event).await? {
                         if !send(&mut socket, Message::Text(value.to_string().into())).await { break; }
@@ -224,7 +230,7 @@ async fn delivery(state: &AppState, actor: &Actor, event: &Event) -> Result<Opti
         {
             return Ok(None);
         }
-        Scope::Session(jti) if *jti != actor.jti => return Ok(None),
+        Scope::Session(sid) if *sid != actor.sid => return Ok(None),
         _ => {}
     }
     auth::session_valid(state, actor).await?;
@@ -287,15 +293,16 @@ async fn bootstrap(State(state): State<AppState>, actor: Actor) -> Result<Json<V
 }
 
 const BOOTSTRAP: &str = "WITH my_channels AS (
-  SELECT c.*,cm.role FROM channels c JOIN channel_members cm ON cm.channel_id=c.id WHERE c.is_available AND cm.user_id=$1
+  SELECT c.*,d.role_type AS role FROM channels c JOIN channel_members cm ON cm.channel_id=c.id
+  JOIN role_definitions d ON d.role_id=cm.role_id WHERE c.is_available AND cm.user_id=$1
 ), visible AS (
-  SELECT r.*,p.lo,p.hi FROM rooms r LEFT JOIN my_channels c ON c.id=r.channel_id LEFT JOIN dm_pairs p ON p.room_id=r.id
+  SELECT r.*,p.lo,p.hi FROM rooms r LEFT JOIN dm_pairs p ON p.room_id=r.id
+  LEFT JOIN channel_room_access a ON a.room_id=r.id AND a.user_id=$1
   WHERE r.is_available AND ((r.kind='DM' AND $1 IN (p.lo,p.hi)) OR
-    (c.id IS NOT NULL AND (NOT r.private OR c.role IN ('CREATOR','MODERATOR') OR
-      EXISTS(SELECT 1 FROM room_members rm WHERE rm.room_id=r.id AND rm.user_id=$1))))
+    a.user_id IS NOT NULL)
 ), room_views AS (
   SELECT r.*, jsonb_build_object('room_id',r.id::text,'channel_id',r.channel_id::text,'category_id',r.category_id::text,
-    'room_name',r.name,'type',r.kind,'is_private',r.private,'position',r.position,'last_message_sequence',r.last_sequence::text,
+    'room_name',coalesce(r.name,'Tin nhắn riêng'),'type',r.kind,'is_private',r.private,'position',coalesce(r.position,0),'last_message_sequence',r.last_sequence::text,
     'last_read_sequence',coalesce(mr.last_sequence,0)::text,
     'unread_count',(SELECT count(*) FROM (SELECT 1 FROM messages m WHERE m.room_id=r.id AND m.sequence>coalesce(mr.last_sequence,0) AND m.sender_id<>$1 LIMIT 100) unread),
     'is_read_only',r.kind='DM' AND NOT EXISTS(SELECT 1 FROM relations f WHERE f.lo=r.lo AND f.hi=r.hi AND f.status='FRIEND'),
@@ -305,7 +312,7 @@ const BOOTSTRAP: &str = "WITH my_channels AS (
   SELECT f.id,f.requester_id,f.status,f.created_at,CASE WHEN f.lo=$1 THEN f.hi ELSE f.lo END AS peer
   FROM relations f WHERE $1 IN(f.lo,f.hi)
 ), pair_views AS (
-  SELECT p.*,jsonb_build_object('user_id',u.id::text,'username',u.username,'full_name',d.full_name,
+  SELECT p.*,jsonb_build_object('user_id',u.id::text,'username',u.username,'full_name',u.full_name,
     'avatar_url',CASE WHEN d.avatar_upload_id IS NOT NULL THEN '/api/v1/images/'||d.avatar_upload_id||'/url' END) AS person
   FROM pair_people p JOIN users u ON u.id=p.peer AND u.is_available JOIN user_details d ON d.user_id=u.id
 ), streams AS (
@@ -317,8 +324,9 @@ SELECT jsonb_build_object(
     'invite_code',CASE WHEN c.role IN ('CREATOR','MODERATOR') AND c.join_mode='PUBLIC_LINK' THEN c.invite_code END,
     'icon_url',CASE WHEN c.icon_upload_id IS NOT NULL THEN '/api/v1/images/'||c.icon_upload_id||'/url' END,
     'background_url',CASE WHEN c.background_upload_id IS NOT NULL THEN '/api/v1/images/'||c.background_upload_id||'/url' END,
-    'members',coalesce((SELECT jsonb_agg(jsonb_build_object('user_id',m.user_id::text,'role',m.role) ORDER BY m.user_id)
-      FROM channel_members m JOIN users u ON u.id=m.user_id AND u.is_available WHERE m.channel_id=c.id),'[]')) ORDER BY c.id) FROM my_channels c),'[]'),
+    'members',coalesce((SELECT jsonb_agg(jsonb_build_object('user_id',m.user_id::text,'role',d.role_type) ORDER BY m.user_id)
+      FROM channel_members m JOIN role_definitions d ON d.role_id=m.role_id
+      JOIN users u ON u.id=m.user_id AND u.is_available WHERE m.channel_id=c.id),'[]')) ORDER BY c.id) FROM my_channels c),'[]'),
   'categories',coalesce((SELECT jsonb_agg(jsonb_build_object('category_id',g.id::text,'channel_id',g.channel_id::text,
     'category_name',g.name,'position',g.position) ORDER BY g.channel_id,g.position,g.id) FROM room_categories g JOIN my_channels c ON c.id=g.channel_id),'[]'),
   'rooms',coalesce((SELECT jsonb_agg(view ORDER BY channel_id,category_id,position,id) FROM room_views WHERE kind<>'DM'),'[]'),
@@ -331,7 +339,8 @@ SELECT jsonb_build_object(
     'channel_name',c.name,'inviter_id',i.inviter_id::text,'invitee_id',i.invitee_id::text,'status',i.status,'created_at',i.created_at) ORDER BY i.id)
     FROM channel_invitations i JOIN channels c ON c.id=i.channel_id AND c.is_available WHERE $1 IN(i.inviter_id,i.invitee_id) AND i.status='PENDING'),'[]'),
   'voice_states',coalesce((SELECT jsonb_agg(jsonb_build_object('room_id',v.room_id::text,'user_id',v.user_id::text,
-    'voice_session_id',v.id::text,'state',v.state,'screen_video_sid',v.screen_video_sid,'screen_audio_sid',v.screen_audio_sid) ORDER BY v.id)
+    'voice_session_id',v.id::text,'state',CASE WHEN v.state='ISSUED' THEN 'PENDING' ELSE v.state END,
+    'screen_video_sid',v.screen_video_sid,'screen_audio_sid',v.screen_audio_sid) ORDER BY v.id)
     FROM voice_sessions v JOIN visible r ON r.id=v.room_id
-    WHERE v.state='CONNECTED' OR (v.state='PENDING' AND v.expires_at>now())),'[]'),
+    WHERE v.state='CONNECTED' OR (v.state='ISSUED' AND v.join_token_expires_at>now())),'[]'),
   'revisions',coalesce((SELECT jsonb_object_agg(s.key,coalesce(v.revision,0)::text) FROM streams s LEFT JOIN stream_revisions v ON v.stream=s.key),'{}'))";

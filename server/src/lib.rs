@@ -125,6 +125,7 @@ impl<'de> Deserialize<'de> for Id {
 #[derive(Clone, Debug)]
 struct Actor {
     user_id: Id,
+    sid: Uuid,
     jti: Uuid,
     exp: i64,
     auth_version: i64,
@@ -426,10 +427,12 @@ async fn run_workers(state: AppState) {
             files::run_cleanup(&state),
             voice::run_worker(&state),
             async {
-                sqlx::query("DELETE FROM deleted_message_keys WHERE expires_at <= now()")
+                sqlx::query("DELETE FROM revoked_tokens WHERE expires_at <= now()")
                     .execute(&state.pool)
                     .await?;
-                sqlx::query("DELETE FROM forgot_limits WHERE bucket < floor(extract(epoch FROM now())/900)::bigint-2").execute(&state.pool).await?;
+                sqlx::query("DELETE FROM recovery_rate_buckets WHERE window_start < now() - interval '30 minutes'")
+                    .execute(&state.pool)
+                    .await?;
                 sqlx::query(
                     "DELETE FROM outbox_events WHERE dispatched_at < now()-interval '1 day'",
                 )

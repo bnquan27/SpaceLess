@@ -2919,6 +2919,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "hex",
+ "hmac 0.12.1",
  "image",
  "jsonwebtoken",
  "lettre",

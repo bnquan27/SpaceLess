@@ -10,6 +10,7 @@ assert(binary && process.env.DATABASE_URL, 'Pass the server binary and set DATAB
 const secret = randomBytes(32).toString('hex');
 const issuer = 'local-livekit-protocol-fixture';
 const removals = [];
+let rejectNextRemoval = false;
 const provider = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -18,6 +19,10 @@ const provider = createServer(async (request, response) => {
     if (request.url.endsWith('/ListRooms')) response.end('{"rooms":[]}');
     else if (request.url.endsWith('/RemoveParticipant')) {
         removals.push(body);
+        if (rejectNextRemoval) {
+            rejectNextRemoval = false;
+            response.statusCode = 503;
+        }
         response.end('{}');
     } else {
         response.statusCode = 404;
@@ -70,18 +75,25 @@ try {
     await request('POST', '/auth/register', null, { username, password, full_name: username,
         date_of_birth: '1990-01-01', email: `${username}@example.test`, phone: '+84900000000' }, 201);
     const { access_token: oldToken } = await request('POST', '/auth/login', null, { username, password });
-    const { access_token: newToken } = await request('POST', '/auth/login', null, { username, password });
+    let { access_token: newToken } = await request('POST', '/auth/login', null, { username, password });
     const { channel: { channel_id: channel } } = await request('POST', '/channels', oldToken, { channel_name: username }, 201);
     const { room_id: room } = await request('POST', `/channels/${channel}/rooms`, oldToken,
         { room_name: 'Voice', type: 'VOICE', is_private: false }, 201);
     const voice = `/rooms/${room}/voice`;
     const old = (await request('POST', `${voice}/join`, oldToken)).voice_session_id;
     await webhook('participant_joined', room, old, 'PA_old');
+    rejectNextRemoval = true;
+    await request('POST', `${voice}/join`, newToken, undefined, 503);
+    assert.deepEqual((await request('GET', '/bootstrap', newToken)).voice_states, []);
     const current = (await request('POST', `${voice}/join`, newToken)).voice_session_id;
     assert.notEqual(old, current);
     assert(removals.some(({ identity, revoke_token_ts }) => identity === `voice-${old}` && Number(revoke_token_ts) > 0));
     await webhook('participant_joined', room, current, 'PA_current', undefined, 401, true);
     await webhook('participant_joined', room, current, 'PA_current');
+    const refreshed = await request('POST', '/auth/refresh', newToken);
+    await request('GET', '/users/me', newToken, undefined, 401);
+    newToken = refreshed.access_token;
+    assert.equal((await request('GET', '/bootstrap', newToken)).voice_states[0].voice_session_id, current);
     await webhook('participant_left', room, old, 'PA_old');
     await request('DELETE', `${voice}/leave?voice_session_id=${current}`, oldToken, undefined, 204);
     await webhook('track_published', room, current, 'PA_current', { sid: 'TR_screen', source: 'SCREEN_SHARE' });
@@ -93,7 +105,31 @@ try {
     assert(removals.some(({ identity }) => identity === `voice-${current}`));
     snapshot = await request('GET', '/bootstrap', newToken);
     assert.deepEqual(snapshot.voice_states, []);
-    console.log('PASS: signed webhooks, generation and owner checks, track SID fencing, and revocation requests to the protocol fixture');
+    const afterRefresh = (await request('POST', `${voice}/join`, newToken)).voice_session_id;
+    await request('POST', '/auth/logout', newToken, undefined, 204);
+    assert(removals.some(({ identity }) => identity === `voice-${afterRefresh}`));
+
+    const moderatorName = `mod${randomBytes(6).toString('hex')}`;
+    const { user_id: moderator } = await request('POST', '/auth/register', null, {
+        username: moderatorName, password, full_name: moderatorName, date_of_birth: '1990-01-01',
+        email: `${moderatorName}@example.test`, phone: '+84900000000',
+    }, 201);
+    const { access_token: moderatorToken } = await request('POST', '/auth/login', null, {
+        username: moderatorName, password,
+    });
+    const { request_id: friendship } = await request('POST', '/friends/requests', oldToken, { target_user_id: moderator }, 201);
+    await request('PATCH', `/friends/requests/${friendship}`, moderatorToken, { decision: 'ACCEPT' });
+    const { invitation_id: invitation } = await request('POST', `/channels/${channel}/invitations`, oldToken, { target_user_id: moderator }, 201);
+    await request('PATCH', `/invitations/${invitation}`, moderatorToken, { decision: 'ACCEPT' });
+    await request('PATCH', `/channels/${channel}/members/${moderator}/role`, oldToken, { role: 'MODERATOR' });
+    const roomPath = `/channels/${channel}/rooms/${room}`;
+    await request('PATCH', roomPath, oldToken, { is_private: true, member_ids: [moderator] });
+    const deniedSession = (await request('POST', `${voice}/join`, moderatorToken)).voice_session_id;
+    await webhook('participant_joined', room, deniedSession, 'PA_moderator');
+    await request('PATCH', roomPath, oldToken, { denied_moderator_ids: [moderator] });
+    assert(removals.some(({ identity }) => identity === `voice-${deniedSession}`));
+    await request('POST', `${voice}/join`, moderatorToken, undefined, 404);
+    console.log('PASS: signed webhooks, stable session across refresh, track SID fencing and voice revocation after logout, device switch or moderator denial');
 } finally {
     if (child.exitCode === null) child.kill();
     await exited;

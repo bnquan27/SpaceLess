@@ -142,9 +142,9 @@ async fn join(
     if let Some(old) = old {
         let old_id = Id(old.get("id"));
         queue_revoke(&mut tx, old_id).await?;
-        let old_jti: Uuid = old.get("session_jti");
-        if old_jti != actor.jti {
-            sync::emit(&mut tx,Scope::Session(old_jti),"VOICE_STATE_UPDATE",json!({"room_id":Id(old.get("room_id")),"user_id":actor.user_id,"voice_session_id":old_id,"state":"REVOKING","device_switched":true})).await?;
+        let old_sid: Uuid = old.get("session_id");
+        if old_sid != actor.sid {
+            sync::emit(&mut tx,Scope::Session(old_sid),"VOICE_STATE_UPDATE",json!({"room_id":Id(old.get("room_id")),"user_id":actor.user_id,"voice_session_id":old_id,"state":"REVOKING","device_switched":true})).await?;
         }
         tx.commit().await?;
         process_revocation(&state, old_id).await?;
@@ -170,8 +170,8 @@ async fn join(
         Some(metadata),
         300,
     )?;
-    sqlx::query("INSERT INTO voice_sessions(id,user_id,room_id,session_jti,identity,state,expires_at) VALUES($1,$2,$3,$4,$5,'PENDING',$6)")
-        .bind(voice_id.0).bind(actor.user_id.0).bind(room.0).bind(actor.jti).bind(identity).bind(expires_at).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO voice_sessions(id,user_id,room_id,session_id,participant_identity,state,join_token_expires_at) VALUES($1,$2,$3,$4,$5,'ISSUED',$6)")
+        .bind(voice_id.0).bind(actor.user_id.0).bind(room.0).bind(actor.sid).bind(identity).bind(expires_at).execute(&mut *tx).await?;
     sync::emit(&mut tx,Scope::Room(room),"VOICE_STATE_UPDATE",json!({"room_id":room,"user_id":actor.user_id,"voice_session_id":voice_id,"state":"PENDING"})).await?;
     tx.commit().await?;
     Ok(Json(
@@ -193,8 +193,8 @@ async fn leave(
 ) -> Result<StatusCode> {
     let mut tx = state.pool.begin().await?;
     db::lock_session(&mut tx, &actor).await?;
-    let owned: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM voice_sessions WHERE id=$1 AND user_id=$2 AND room_id=$3 AND session_jti=$4)")
-        .bind(input.voice_session_id.0).bind(actor.user_id.0).bind(room.0).bind(actor.jti).fetch_one(&mut *tx).await?;
+    let owned: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM voice_sessions WHERE id=$1 AND user_id=$2 AND room_id=$3 AND session_id=$4)")
+        .bind(input.voice_session_id.0).bind(actor.user_id.0).bind(room.0).bind(actor.sid).fetch_one(&mut *tx).await?;
     if owned {
         queue_revoke(&mut tx, input.voice_session_id).await?;
     }
@@ -206,14 +206,20 @@ async fn leave(
 }
 
 async fn queue_revoke(conn: &mut PgConnection, id: Id) -> Result<()> {
-    sqlx::query("WITH marked AS (UPDATE voice_sessions SET state='REVOKING' WHERE id=$1 RETURNING id,room_id,identity) INSERT INTO media_jobs(voice_session_id,room_id,identity) SELECT id,room_id,identity FROM marked ON CONFLICT(voice_session_id) DO NOTHING")
+    sqlx::query("WITH marked AS (UPDATE voice_sessions SET state='REVOKE_PENDING' WHERE id=$1 RETURNING id,room_id,participant_identity) INSERT INTO media_jobs(voice_session_id,room_id,identity) SELECT id,room_id,participant_identity FROM marked ON CONFLICT(voice_session_id) DO NOTHING")
         .bind(id.0).execute(conn).await?;
     Ok(())
 }
 
 pub async fn revoke_invalid(conn: &mut PgConnection) -> Result<()> {
-    let invalid: Vec<i64> = sqlx::query_scalar("SELECT v.id FROM voice_sessions v WHERE v.state<>'REVOKING' AND NOT EXISTS(SELECT 1 FROM users u JOIN auth_sessions a ON a.user_id=u.id JOIN rooms r ON r.id=v.room_id JOIN channels c ON c.id=r.channel_id JOIN channel_members m ON m.channel_id=c.id AND m.user_id=u.id WHERE u.id=v.user_id AND u.is_available AND a.jti=v.session_jti AND a.revoked_at IS NULL AND a.max_expires_at>now() AND r.is_available AND c.is_available AND r.kind='VOICE' AND (NOT r.private OR m.role IN ('CREATOR','MODERATOR') OR EXISTS(SELECT 1 FROM room_members rm WHERE rm.room_id=r.id AND rm.user_id=u.id))) ORDER BY v.id")
-        .fetch_all(&mut *conn).await?;
+    let invalid: Vec<i64> = sqlx::query_scalar(
+        "SELECT v.id FROM voice_sessions v
+         WHERE v.state <> 'REVOKE_PENDING'
+           AND NOT EXISTS (SELECT 1 FROM authorized_voice_sessions a WHERE a.id=v.id)
+         ORDER BY v.id",
+    )
+    .fetch_all(&mut *conn)
+    .await?;
     for id in invalid {
         queue_revoke(conn, Id(id)).await?;
     }
@@ -253,11 +259,12 @@ async fn process_revocation(state: &AppState, id: Id) -> Result<()> {
         return Err(ApiError::unavailable());
     }
     let mut tx = state.pool.begin().await?;
-    let old =
-        sqlx::query("DELETE FROM voice_sessions WHERE id=$1 AND state='REVOKING' RETURNING *")
-            .bind(id.0)
-            .fetch_optional(&mut *tx)
-            .await?;
+    let old = sqlx::query(
+        "DELETE FROM voice_sessions WHERE id=$1 AND state='REVOKE_PENDING' RETURNING *",
+    )
+    .bind(id.0)
+    .fetch_optional(&mut *tx)
+    .await?;
     if let Some(old) = old {
         emit_end(&mut tx, &old).await?;
     }
@@ -368,45 +375,59 @@ async fn webhook(
     }
     let mut revoke = None;
     if let (Some(room), Some(participant)) = (event.room, event.participant) {
-        let row = sqlx::query("SELECT * FROM voice_sessions WHERE identity=$1 FOR UPDATE")
-            .bind(&participant.identity)
-            .fetch_optional(&mut *tx)
-            .await?;
+        let row =
+            sqlx::query("SELECT * FROM voice_sessions WHERE participant_identity=$1 FOR UPDATE")
+                .bind(&participant.identity)
+                .fetch_optional(&mut *tx)
+                .await?;
         if let Some(row) = row {
             let id = Id(row.get("id"));
             let actual_room = Id(row.get("room_id"));
             let sid: Option<String> = row.get("participant_sid");
             let valid_sid = sid.as_ref().is_none_or(|sid| sid == &participant.sid);
-            if room.name == room_name(actual_room)
-                && valid_sid
-                && row.get::<String, _>("state") != "REVOKING"
-            {
-                match event.event.as_str() {
-                    "participant_joined" => {
-                        if row.get::<String, _>("state") == "PENDING" {
-                            sqlx::query("UPDATE voice_sessions SET state='CONNECTED',participant_sid=$2 WHERE id=$1").bind(id.0).bind(&participant.sid).execute(&mut *tx).await?;
-                            sync::emit(&mut tx,Scope::Room(actual_room),"VOICE_STATE_UPDATE",json!({"room_id":actual_room,"user_id":Id(row.get("user_id")),"voice_session_id":id,"state":"CONNECTED"})).await?;
-                        }
-                    }
-                    "participant_left" => {
-                        queue_revoke(&mut tx, id).await?;
-                        revoke = Some(id);
-                    }
-                    "track_published" | "track_unpublished" => {
-                        if let Some(track) = event.track {
-                            if apply_track(&mut tx, &row, &track, event.event == "track_published")
-                                .await?
-                            {
-                                revoke = Some(id);
+            let service_room: String = row.get("service_room");
+            let session_state: String = row.get("state");
+            if room.name == service_room && session_state == "REVOKE_PENDING" {
+                revoke = Some(id);
+            } else if room.name == service_room && valid_sid {
+                let authorized: bool = sqlx::query_scalar(
+                    "SELECT EXISTS(SELECT 1 FROM authorized_voice_sessions WHERE id=$1)",
+                )
+                .bind(id.0)
+                .fetch_one(&mut *tx)
+                .await?;
+                if !authorized {
+                    queue_revoke(&mut tx, id).await?;
+                    revoke = Some(id);
+                } else {
+                    match event.event.as_str() {
+                        "participant_joined" => {
+                            if session_state == "ISSUED" {
+                                sqlx::query("UPDATE voice_sessions SET state='CONNECTED',participant_sid=$2 WHERE id=$1").bind(id.0).bind(&participant.sid).execute(&mut *tx).await?;
+                                sync::emit(&mut *tx,Scope::Room(actual_room),"VOICE_STATE_UPDATE",json!({"room_id":actual_room,"user_id":Id(row.get("user_id")),"voice_session_id":id,"state":"CONNECTED"})).await?;
                             }
                         }
+                        "participant_left" => {
+                            queue_revoke(&mut tx, id).await?;
+                            revoke = Some(id);
+                        }
+                        "track_published" | "track_unpublished" => {
+                            if let Some(track) = event.track {
+                                if apply_track(
+                                    &mut tx,
+                                    &row,
+                                    &track,
+                                    event.event == "track_published",
+                                )
+                                .await?
+                                {
+                                    revoke = Some(id);
+                                }
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
-            } else if room.name == room_name(actual_room)
-                && row.get::<String, _>("state") == "REVOKING"
-            {
-                revoke = Some(id);
             }
         } else if event.event == "participant_joined" {
             if let (Some(raw_room), Some(raw_id)) = (
@@ -566,10 +587,10 @@ async fn reconcile_room(state: &AppState, room: Id, participants: Vec<Participan
     let mut revoke = Vec::new();
     for row in sessions {
         let id = Id(row.get("id"));
-        let identity: String = row.get("identity");
+        let identity: String = row.get("participant_identity");
         let participant = participants.remove(&identity);
         let state_name: String = row.get("state");
-        if state_name == "REVOKING" {
+        if state_name == "REVOKE_PENDING" {
             revoke.push(id);
             continue;
         }
@@ -580,7 +601,7 @@ async fn reconcile_room(state: &AppState, room: Id, participants: Vec<Participan
                 revoke.push(id);
                 continue;
             }
-            if state_name == "PENDING" {
+            if state_name == "ISSUED" {
                 sqlx::query(
                     "UPDATE voice_sessions SET state='CONNECTED',participant_sid=$2 WHERE id=$1",
                 )
@@ -632,7 +653,7 @@ async fn reconcile_room(state: &AppState, room: Id, participants: Vec<Participan
                 }
             }
         } else if state_name == "CONNECTED"
-            || row.get::<DateTime<Utc>, _>("expires_at") <= Utc::now()
+            || row.get::<DateTime<Utc>, _>("join_token_expires_at") <= Utc::now()
         {
             queue_revoke(&mut tx, id).await?;
             revoke.push(id);
