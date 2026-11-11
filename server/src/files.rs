@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, io::Cursor, time::Duration};
 
-use aws_sdk_s3::{Client, presigning::PresigningConfig};
+use aws_sdk_s3::{
+    Client, operation::get_object::GetObjectOutput, presigning::PresigningConfig,
+    primitives::ByteStream,
+};
 use axum::{
     Json, Router,
     body::Body as HttpBody,
@@ -13,11 +16,13 @@ use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, deco
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{PgConnection, Row};
-use tokio::io::AsyncReadExt;
+use tokio::{io::AsyncReadExt, sync::Semaphore};
 use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 
 use crate::{Actor, ApiError, AppState, Body, Id, Path, Query, Result, db};
+
+static ATTACHMENT_VERIFICATION: Semaphore = Semaphore::const_new(4);
 
 #[derive(Clone)]
 pub struct Config {
@@ -97,8 +102,8 @@ enum ImagePurpose {
 
 fn validate_metadata(input: &UploadInput, purpose: &str) -> Result<()> {
     let limit = match purpose {
-        "AVATAR" | "ICON" => 2_000_000,
-        "BACKGROUND" => 5_000_000,
+        "AVATAR" | "CHANNEL_ICON" => 2_000_000,
+        "CHANNEL_BACKGROUND" => 5_000_000,
         _ => 25_000_000,
     };
     if input.file_size_bytes < 1 || input.file_size_bytes > limit {
@@ -127,7 +132,7 @@ fn validate_metadata(input: &UploadInput, purpose: &str) -> Result<()> {
             | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     );
-    if !image && (purpose != "MESSAGE" || !document) {
+    if !image && (purpose != "ATTACHMENT" || !document) {
         return Err(ApiError::bad("Định dạng tệp không được hỗ trợ."));
     }
     Ok(())
@@ -163,7 +168,7 @@ async fn presign_message(
         actor.user_id,
         Some(room),
         None,
-        "MESSAGE",
+        "ATTACHMENT",
         input,
     )
     .await?;
@@ -192,13 +197,13 @@ async fn presign_channel(
     let mut tx = state.pool.begin().await?;
     db::lock_session(&mut tx, &actor).await?;
     db::lock_channel(&mut tx, channel).await?;
-    let allowed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM channels c JOIN channel_members m ON m.channel_id=c.id WHERE c.id=$1 AND c.is_available AND m.user_id=$2 AND m.role IN ('CREATOR','MODERATOR'))").bind(channel.0).bind(actor.user_id.0).fetch_one(&mut *tx).await?;
+    let allowed: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM channels c JOIN channel_members m ON m.channel_id=c.id WHERE c.id=$1 AND c.is_available AND m.user_id=$2 AND m.role_id IN (1,2))").bind(channel.0).bind(actor.user_id.0).fetch_one(&mut *tx).await?;
     if !allowed {
         return Err(ApiError::not_found());
     }
     let purpose = match input.purpose {
-        ImagePurpose::Icon => "ICON",
-        ImagePurpose::Background => "BACKGROUND",
+        ImagePurpose::Icon => "CHANNEL_ICON",
+        ImagePurpose::Background => "CHANNEL_BACKGROUND",
     };
     let response = presign(
         &state,
@@ -230,7 +235,9 @@ async fn presign(
     validate_metadata(&input, purpose)?;
     let config = state.files.as_ref().ok_or_else(ApiError::unavailable)?;
     let id = state.id().await?;
-    let storage_key = format!("uploads/{}/{}", id.0, Uuid::new_v4());
+    let suffix = format!("{}/{}", id.0, Uuid::new_v4());
+    let staging_key = format!("uploads/staging/{suffix}");
+    let storage_key = format!("uploads/final/{suffix}");
     let now = Utc::now();
     let put_expires_at = now + chrono::Duration::seconds(300);
     let expires_at = now + chrono::Duration::seconds(3600);
@@ -238,12 +245,15 @@ async fn presign(
         .s3
         .put_object()
         .bucket(&config.bucket)
-        .key(&storage_key)
+        .key(&staging_key)
         .content_type(&input.mime_type)
         .content_length(input.file_size_bytes)
         .if_none_match("*")
         .presigned(
-            PresigningConfig::expires_in(Duration::from_secs(300))
+            PresigningConfig::builder()
+                .start_time(now.into())
+                .expires_in(Duration::from_secs(300))
+                .build()
                 .map_err(|_| ApiError::internal())?,
         )
         .await
@@ -255,8 +265,8 @@ async fn presign(
     headers.insert("content-length".into(), input.file_size_bytes.to_string());
     headers.insert("content-type".into(), input.mime_type.clone());
     headers.insert("if-none-match".into(), "*".into());
-    sqlx::query("INSERT INTO file_uploads(id,owner_id,room_id,channel_id,purpose,storage_key,file_name,mime_type,size_bytes,expires_at,put_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
-        .bind(id.0).bind(owner.0).bind(room.map(|x| x.0)).bind(channel.map(|x| x.0)).bind(purpose).bind(storage_key).bind(input.file_name).bind(input.mime_type).bind(input.file_size_bytes).bind(expires_at).bind(put_expires_at).execute(conn).await?;
+    sqlx::query("INSERT INTO file_uploads(id,owner_id,room_id,channel_id,purpose,staging_key,storage_key,file_name,mime_type,size_bytes,created_at,expires_at,put_expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
+        .bind(id.0).bind(owner.0).bind(room.map(|x| x.0)).bind(channel.map(|x| x.0)).bind(purpose).bind(staging_key).bind(storage_key).bind(input.file_name).bind(input.mime_type).bind(input.file_size_bytes).bind(now).bind(expires_at).bind(put_expires_at).execute(conn).await?;
     Ok(
         json!({"upload_id":id,"put_url":signed.uri(),"required_headers":headers,"expires_at":put_expires_at,"staged_expires_at":expires_at}),
     )
@@ -274,46 +284,96 @@ pub async fn verify_uploads(
     room: Id,
     ids: &[Id],
 ) -> Result<Vec<VerifiedUpload>> {
-    if ids.len() > 5 {
-        return Err(ApiError::bad("Mỗi tin nhắn có tối đa 5 tệp."));
-    }
-    let mut sorted: Vec<_> = ids.iter().map(|id| id.0).collect();
-    sorted.sort_unstable();
-    sorted.dedup();
-    if sorted.len() != ids.len() {
-        return Err(ApiError::bad("Danh sách tệp bị trùng."));
-    }
     let mut result = Vec::with_capacity(ids.len());
-    for id in sorted {
-        let row = sqlx::query("SELECT * FROM file_uploads WHERE id=$1 AND owner_id=$2 AND room_id=$3 AND purpose='MESSAGE' AND status='STAGED' AND expires_at>now()")
-            .bind(id).bind(actor.0).bind(room.0).fetch_optional(&state.pool).await?.ok_or_else(|| ApiError::conflict("Tệp không còn khả dụng."))?;
+    for id in ids {
+        let _permit = ATTACHMENT_VERIFICATION
+            .acquire()
+            .await
+            .map_err(|_| ApiError::unavailable())?;
+        let mut tx = state.pool.begin().await?;
+        let row = sqlx::query("SELECT * FROM file_uploads WHERE id=$1 AND owner_id=$2 AND room_id=$3 AND purpose='ATTACHMENT' AND status='STAGED' AND expires_at>clock_timestamp() FOR UPDATE")
+            .bind(id.0).bind(actor.0).bind(room.0).fetch_optional(&mut *tx).await?.ok_or_else(|| ApiError::conflict("Tệp không còn khả dụng."))?;
         result.push(verify_object(state, &row).await?);
+        tx.commit().await?;
     }
     Ok(result)
 }
 
 async fn verify_object(state: &AppState, row: &sqlx::postgres::PgRow) -> Result<VerifiedUpload> {
     let config = state.files.as_ref().ok_or_else(ApiError::unavailable)?;
+    let staging_key: String = row.get("staging_key");
     let key: String = row.get("storage_key");
     let expected: i64 = row.get("size_bytes");
     let mime: String = row.get("mime_type");
+    let staged = config
+        .s3
+        .get_object()
+        .bucket(&config.bucket)
+        .key(staging_key)
+        .send()
+        .await
+        .map_err(|_| ApiError::conflict("Tệp chưa được tải lên thành công."))?;
+    let bytes = read_upload_bytes(staged, expected, &mime).await?;
+    // The upload row lock coordinates cleanup. A previous attempt can already have written the final key.
+    let (version, etag) = match config
+        .s3
+        .put_object()
+        .bucket(&config.bucket)
+        .key(&key)
+        .content_type(&mime)
+        .content_length(expected)
+        .if_none_match("*")
+        .body(ByteStream::from(bytes))
+        .send()
+        .await
+    {
+        Ok(object) => (
+            object.version_id().map(str::to_owned),
+            object.e_tag().map(str::to_owned),
+        ),
+        Err(error)
+            if error
+                .raw_response()
+                .is_some_and(|response| response.status().as_u16() == 412) =>
+        {
+            (None, None)
+        }
+        Err(_) => return Err(ApiError::unavailable()),
+    };
     let response = config
         .s3
         .get_object()
         .bucket(&config.bucket)
-        .key(key)
+        .key(&key)
+        .set_version_id(version)
+        .set_if_match(etag)
         .send()
         .await
-        .map_err(|_| ApiError::conflict("Tệp chưa được tải lên thành công."))?;
-    if response.content_length() != Some(expected) || response.content_type() != Some(mime.as_str())
-    {
-        return Err(ApiError::bad("Dữ liệu tệp không khớp khai báo."));
-    }
+        .map_err(|_| ApiError::unavailable())?;
     let version = response.version_id().map(str::to_owned);
     let etag = response
         .e_tag()
         .ok_or_else(ApiError::unavailable)?
         .to_owned();
+    let bytes = read_upload_bytes(response, expected, &mime).await?;
+    tokio::task::spawn_blocking(move || validate_bytes(&bytes, &mime))
+        .await
+        .map_err(|_| ApiError::internal())??;
+    Ok(VerifiedUpload {
+        id: Id(row.get("id")),
+        version,
+        etag,
+    })
+}
+
+async fn read_upload_bytes(
+    response: GetObjectOutput,
+    expected: i64,
+    mime: &str,
+) -> Result<Vec<u8>> {
+    if response.content_length() != Some(expected) || response.content_type() != Some(mime) {
+        return Err(ApiError::bad("Dữ liệu tệp không khớp khai báo."));
+    }
     let mut bytes = Vec::with_capacity(expected as usize);
     response
         .body
@@ -325,14 +385,7 @@ async fn verify_object(state: &AppState, row: &sqlx::postgres::PgRow) -> Result<
     if bytes.len() as i64 != expected {
         return Err(ApiError::bad("Kích thước tệp không hợp lệ."));
     }
-    tokio::task::spawn_blocking(move || validate_bytes(&bytes, &mime))
-        .await
-        .map_err(|_| ApiError::internal())??;
-    Ok(VerifiedUpload {
-        id: Id(row.get("id")),
-        version,
-        etag,
-    })
+    Ok(bytes)
 }
 
 fn validate_bytes(bytes: &[u8], mime: &str) -> Result<()> {
@@ -401,15 +454,15 @@ pub async fn attach_message(
     verified: Vec<VerifiedUpload>,
 ) -> Result<()> {
     for upload in verified {
-        let changed = sqlx::query("UPDATE file_uploads SET status='ATTACHED',object_version=$4,etag=$5 WHERE id=$1 AND owner_id=$2 AND room_id=$3 AND purpose='MESSAGE' AND status='STAGED' AND expires_at>now()")
-            .bind(upload.id.0).bind(actor.0).bind(room.0).bind(upload.version).bind(upload.etag).execute(&mut *conn).await?.rows_affected();
-        if changed != 1 {
-            return Err(ApiError::conflict("Tệp đã hết hạn hoặc đã được sử dụng."));
-        }
+        let locked = sqlx::query_scalar::<_, i64>("SELECT id FROM file_uploads WHERE id=$1 AND owner_id=$2 AND room_id=$3 AND purpose='ATTACHMENT' AND status='STAGED' FOR UPDATE")
+            .bind(upload.id.0).bind(actor.0).bind(room.0).fetch_optional(&mut *conn).await?;
+        let id =
+            locked.ok_or_else(|| ApiError::conflict("Tệp đã hết hạn hoặc đã được sử dụng."))?;
+        mark_attached(conn, upload).await?;
         sqlx::query("INSERT INTO message_attachments(id,message_id,upload_id) VALUES($1,$2,$3)")
             .bind(state.id().await?.0)
             .bind(message.0)
-            .bind(upload.id.0)
+            .bind(id)
             .execute(&mut *conn)
             .await?;
     }
@@ -424,15 +477,23 @@ pub async fn attach_image(
     upload: Id,
     purpose: &str,
 ) -> Result<()> {
-    let row = sqlx::query("SELECT * FROM file_uploads WHERE id=$1 AND owner_id=$2 AND channel_id IS NOT DISTINCT FROM $3 AND purpose=$4 AND status='STAGED' AND expires_at>now() FOR UPDATE")
+    let row = sqlx::query("SELECT * FROM file_uploads WHERE id=$1 AND owner_id=$2 AND channel_id IS NOT DISTINCT FROM $3 AND purpose=$4 AND status='STAGED' AND expires_at>clock_timestamp() FOR UPDATE")
         .bind(upload.0).bind(actor.0).bind(channel.map(|id| id.0)).bind(purpose).fetch_optional(&mut *conn).await?.ok_or_else(|| ApiError::conflict("Ảnh không còn khả dụng."))?;
     let verified = verify_object(state, &row).await?;
-    sqlx::query("UPDATE file_uploads SET status='ATTACHED',object_version=$2,etag=$3 WHERE id=$1")
-        .bind(upload.0)
-        .bind(verified.version)
-        .bind(verified.etag)
+    mark_attached(conn, verified).await
+}
+
+async fn mark_attached(conn: &mut PgConnection, upload: VerifiedUpload) -> Result<()> {
+    let changed = sqlx::query("UPDATE file_uploads SET status='ATTACHED',object_version=$2,etag=$3 WHERE id=$1 AND expires_at>clock_timestamp()")
+        .bind(upload.id.0)
+        .bind(upload.version)
+        .bind(upload.etag)
         .execute(conn)
-        .await?;
+        .await?
+        .rows_affected();
+    if changed != 1 {
+        return Err(ApiError::conflict("Tệp đã hết hạn hoặc đã được sử dụng."));
+    }
     Ok(())
 }
 
@@ -474,7 +535,7 @@ async fn authorize_upload(
         .ok_or_else(ApiError::not_found)?;
     let purpose: String = row.get("purpose");
     match purpose.as_str() {
-        "MESSAGE" => {
+        "ATTACHMENT" => {
             let exists: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM message_attachments WHERE upload_id=$1)",
             )
@@ -512,14 +573,14 @@ async fn signed_download(
     let config = state.files.as_ref().ok_or_else(ApiError::unavailable)?;
     let mut conn = state.pool.acquire().await?;
     let row = authorize_upload(&mut conn, actor.user_id, upload).await?;
-    let is_image = row.get::<String, _>("purpose") != "MESSAGE";
+    let is_image = row.get::<String, _>("purpose") != "ATTACHMENT";
     if expected_image != is_image {
         return Err(ApiError::not_found());
     }
     let expires_at = Utc::now() + chrono::Duration::seconds(120);
     let claims = DownloadClaims {
         sub: actor.user_id.0.to_string(),
-        jti: actor.jti,
+        jti: actor.sid,
         upload_id: upload,
         exp: expires_at.timestamp().min(actor.exp),
         aud: "spaceless-files".into(),
@@ -581,7 +642,7 @@ async fn download(
     .map_err(|_| ApiError::unauthorized())?
     .claims;
     if claims.upload_id.0 != upload.0
-        || claims.jti != actor.jti
+        || claims.jti != actor.sid
         || claims.sub != actor.user_id.0.to_string()
     {
         return Err(ApiError::unauthorized());
@@ -634,42 +695,86 @@ pub async fn run_cleanup(state: &AppState) -> Result<()> {
     let Some(config) = state.files.as_ref() else {
         return Ok(());
     };
-    sqlx::query("UPDATE file_uploads SET status='DELETE_PENDING' WHERE status='STAGED' AND expires_at<=now()").execute(&state.pool).await?;
     loop {
         let mut tx = state.pool.begin().await?;
-        let row = sqlx::query("SELECT id,storage_key,object_version FROM file_uploads WHERE status='DELETE_PENDING' AND put_expires_at<now() ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1").fetch_optional(&mut *tx).await?;
+        let row = sqlx::query(
+            "SELECT id, staging_key, storage_key, object_version, status FROM file_uploads
+            WHERE put_expires_at <= now() AND (status='DELETE_PENDING'
+                OR (status='STAGED' AND expires_at <= now())
+                OR (status='ATTACHED' AND staging_key IS NOT NULL))
+            ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1",
+        )
+        .fetch_optional(&mut *tx)
+        .await?;
         let Some(row) = row else { return Ok(()) };
-        let key: String = row.get("storage_key");
-        config
-            .s3
-            .delete_object()
-            .bucket(&config.bucket)
-            .key(&key)
-            .set_version_id(row.get("object_version"))
-            .send()
-            .await
-            .map_err(|_| ApiError::unavailable())?;
-        match config
-            .s3
-            .head_object()
-            .bucket(&config.bucket)
-            .key(&key)
-            .send()
-            .await
-        {
-            Ok(_) => return Err(ApiError::unavailable()),
-            Err(error)
-                if error
-                    .as_service_error()
-                    .is_some_and(|error| error.is_not_found()) => {}
-            Err(_) => return Err(ApiError::unavailable()),
+        let id: i64 = row.get("id");
+        if let Some(key) = row.get::<Option<String>, _>("staging_key") {
+            delete_object(config, &key, None).await?;
         }
-        sqlx::query("DELETE FROM file_uploads WHERE id=$1 AND status='DELETE_PENDING'")
-            .bind(row.get::<i64, _>("id"))
-            .execute(&mut *tx)
-            .await?;
+        if row.get::<String, _>("status") == "ATTACHED" {
+            sqlx::query("UPDATE file_uploads SET staging_key=NULL WHERE id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        } else {
+            let key: String = row.get("storage_key");
+            delete_object(config, &key, row.get("object_version")).await?;
+            sqlx::query("DELETE FROM file_uploads WHERE id=$1")
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+        }
         tx.commit().await?;
     }
+}
+
+async fn head_object(
+    config: &Config,
+    key: &str,
+) -> Result<Option<aws_sdk_s3::operation::head_object::HeadObjectOutput>> {
+    match config
+        .s3
+        .head_object()
+        .bucket(&config.bucket)
+        .key(key)
+        .send()
+        .await
+    {
+        Ok(object) => Ok(Some(object)),
+        Err(error)
+            if error
+                .as_service_error()
+                .is_some_and(|error| error.is_not_found()) =>
+        {
+            Ok(None)
+        }
+        Err(_) => Err(ApiError::unavailable()),
+    }
+}
+
+async fn delete_object(config: &Config, key: &str, version: Option<String>) -> Result<()> {
+    let version = match version {
+        Some(version) => Some(version),
+        None => {
+            let Some(object) = head_object(config, key).await? else {
+                return Ok(());
+            };
+            object.version_id().map(str::to_owned)
+        }
+    };
+    config
+        .s3
+        .delete_object()
+        .bucket(&config.bucket)
+        .key(key)
+        .set_version_id(version)
+        .send()
+        .await
+        .map_err(|_| ApiError::unavailable())?;
+    if head_object(config, key).await?.is_some() {
+        return Err(ApiError::unavailable());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -694,12 +799,12 @@ mod tests {
             file_size_bytes: 10,
         };
         assert!(validate_metadata(&input, "AVATAR").is_err());
-        assert!(validate_metadata(&input, "MESSAGE").is_ok());
+        assert!(validate_metadata(&input, "ATTACHMENT").is_ok());
         input.mime_type = "image/png".into();
         input.file_size_bytes = 2_000_001;
-        assert!(validate_metadata(&input, "ICON").is_err());
-        assert!(validate_metadata(&input, "BACKGROUND").is_ok());
+        assert!(validate_metadata(&input, "CHANNEL_ICON").is_err());
+        assert!(validate_metadata(&input, "CHANNEL_BACKGROUND").is_ok());
         input.file_name = "../a.png".into();
-        assert!(validate_metadata(&input, "MESSAGE").is_err());
+        assert!(validate_metadata(&input, "ATTACHMENT").is_err());
     }
 }

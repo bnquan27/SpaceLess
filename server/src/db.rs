@@ -1,26 +1,46 @@
-use sqlx::{FromRow, PgConnection};
+use chrono::DateTime;
+use sqlx::{FromRow, PgConnection, PgExecutor};
 
 use crate::{Actor, ApiError, Id, Result};
 
 pub async fn lock_session(conn: &mut PgConnection, actor: &Actor) -> Result<()> {
-    let active = sqlx::query_scalar::<_, bool>(
-        "SELECT is_available AND auth_version=$2 FROM users WHERE id=$1 FOR SHARE",
+    sqlx::query_scalar::<_, i64>("SELECT id FROM users WHERE id = $1 FOR SHARE")
+        .bind(actor.user_id.0)
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or_else(ApiError::unauthorized)?;
+    sqlx::query_scalar::<_, uuid::Uuid>(
+        "SELECT session_id FROM auth_sessions WHERE session_id = $1 AND user_id = $2 FOR SHARE",
     )
+    .bind(actor.sid)
+    .bind(actor.user_id.0)
+    .fetch_optional(&mut *conn)
+    .await?
+    .ok_or_else(ApiError::unauthorized)?;
+    // Use a fresh snapshot in case a refresh committed while acquiring the session lock.
+    validate_session(conn, actor).await
+}
+
+pub async fn validate_session<'e>(executor: impl PgExecutor<'e>, actor: &Actor) -> Result<()> {
+    let expires = DateTime::from_timestamp(actor.exp, 0).ok_or_else(ApiError::unauthorized)?;
+    let valid: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM auth_sessions s JOIN users u ON u.id = s.user_id
+         WHERE s.session_id = $1 AND u.id = $2 AND u.auth_version = $3 AND s.auth_version = $3
+           AND u.is_available AND s.revoked_at IS NULL AND s.expires_at >= $4 AND $4 > clock_timestamp()
+           AND NOT EXISTS (SELECT 1 FROM revoked_tokens WHERE token_jti = $5))",
+    )
+    .bind(actor.sid)
     .bind(actor.user_id.0)
     .bind(actor.auth_version)
-    .fetch_optional(&mut *conn)
+    .bind(expires)
+    .bind(actor.jti)
+    .fetch_one(executor)
     .await?;
-    if active != Some(true) {
-        return Err(ApiError::unauthorized());
+    if valid {
+        Ok(())
+    } else {
+        Err(ApiError::unauthorized())
     }
-    let valid = sqlx::query_scalar::<_, bool>(
-        "SELECT revoked_at IS NULL AND max_expires_at > clock_timestamp() AND to_timestamp($3) > clock_timestamp()
-         FROM auth_sessions WHERE jti=$1 AND user_id=$2 FOR SHARE",
-    ).bind(actor.jti).bind(actor.user_id.0).bind(actor.exp as f64).fetch_optional(conn).await?;
-    if valid != Some(true) {
-        return Err(ApiError::unauthorized());
-    }
-    Ok(())
 }
 
 pub async fn lock_pair(conn: &mut PgConnection, first: Id, second: Id) -> Result<()> {
@@ -63,24 +83,19 @@ pub async fn room_access(conn: &mut PgConnection, user: Id, room: Id) -> Result<
             CASE WHEN r.kind='DM' THEN EXISTS(SELECT 1 FROM relations x WHERE x.lo=p.lo AND x.hi=p.hi AND x.status='FRIEND')
               AND NOT EXISTS(SELECT 1 FROM user_blocks b WHERE (b.blocker_id,b.blocked_id) IN ((p.lo,p.hi),(p.hi,p.lo)))
               ELSE true END AS writable,
-            COALESCE(cm.role IN ('CREATOR','MODERATOR') OR (r.private AND rm.is_room_mod),false) AS moderate
-         FROM rooms r LEFT JOIN channels c ON c.id=r.channel_id
-         LEFT JOIN channel_members cm ON cm.channel_id=c.id AND cm.user_id=$1
-         LEFT JOIN room_members rm ON rm.room_id=r.id AND rm.user_id=$1
+            COALESCE(access.moderate,false) AS moderate
+         FROM rooms r
+         LEFT JOIN channel_room_access access ON access.room_id=r.id AND access.user_id=$1
          LEFT JOIN dm_pairs p ON p.room_id=r.id
          WHERE r.id=$2 AND r.is_available AND
-           ((r.kind='DM' AND $1 IN (p.lo,p.hi)) OR
-            (c.is_available AND cm.user_id IS NOT NULL AND (NOT r.private OR cm.role IN ('CREATOR','MODERATOR') OR rm.user_id IS NOT NULL)))",
+           ((r.kind='DM' AND $1 IN (p.lo,p.hi)) OR access.user_id IS NOT NULL)",
     ).bind(user.0).bind(room.0).fetch_optional(conn).await?;
     result.ok_or_else(ApiError::not_found)
 }
 
 pub async fn room_viewers(conn: &mut PgConnection, room: Id) -> Result<Vec<Id>> {
     let ids = sqlx::query_scalar::<_, Id>(
-        "SELECT cm.user_id FROM rooms r JOIN channels c ON c.id=r.channel_id AND c.is_available
-         JOIN channel_members cm ON cm.channel_id=c.id JOIN users u ON u.id=cm.user_id AND u.is_available
-         LEFT JOIN room_members rm ON rm.room_id=r.id AND rm.user_id=cm.user_id
-         WHERE r.id=$1 AND r.is_available AND (NOT r.private OR cm.role IN ('CREATOR','MODERATOR') OR rm.user_id IS NOT NULL)
+        "SELECT user_id FROM channel_room_access WHERE room_id=$1
          UNION ALL SELECT u.id FROM rooms r JOIN dm_pairs p ON p.room_id=r.id
          JOIN users u ON u.id IN (p.lo,p.hi) AND u.is_available WHERE r.id=$1 AND r.is_available ORDER BY 1",
     ).bind(room.0).fetch_all(conn).await?;

@@ -64,17 +64,18 @@ where
 
 fn name(input: &str) -> Result<String> {
     let name: String = input.trim().nfc().collect();
-    if name.is_empty() || name.contains('\0') {
+    if name.is_empty() || name.chars().count() > 100 || name.contains('\0') {
         return Err(ApiError::bad("INVALID_NAME"));
     }
     Ok(name)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
 enum ChannelRole {
-    Creator,
-    Moderator,
-    Member,
+    Creator = 1,
+    Moderator = 2,
+    Member = 3,
 }
 
 impl ChannelRole {
@@ -91,6 +92,13 @@ enum EditableRole {
 }
 
 impl EditableRole {
+    fn channel_role(&self) -> ChannelRole {
+        match self {
+            Self::Moderator => ChannelRole::Moderator,
+            Self::Member => ChannelRole::Member,
+        }
+    }
+
     fn as_str(&self) -> &'static str {
         match self {
             Self::Moderator => "MODERATOR",
@@ -159,17 +167,17 @@ async fn locked_channel(conn: &mut PgConnection, channel: Id) -> Result<Channel>
 }
 
 async fn role(conn: &mut PgConnection, channel: Id, user: Id) -> Result<Option<ChannelRole>> {
-    let role: Option<String> = sqlx::query_scalar(
-        "SELECT role FROM channel_members WHERE channel_id = $1 AND user_id = $2",
+    let role: Option<i32> = sqlx::query_scalar(
+        "SELECT role_id FROM channel_members WHERE channel_id = $1 AND user_id = $2",
     )
     .bind(channel.0)
     .bind(user.0)
     .fetch_optional(conn)
     .await?;
-    match role.as_deref() {
-        Some("CREATOR") => Ok(Some(ChannelRole::Creator)),
-        Some("MODERATOR") => Ok(Some(ChannelRole::Moderator)),
-        Some("MEMBER") => Ok(Some(ChannelRole::Member)),
+    match role {
+        Some(1) => Ok(Some(ChannelRole::Creator)),
+        Some(2) => Ok(Some(ChannelRole::Moderator)),
+        Some(3) => Ok(Some(ChannelRole::Member)),
         None => Ok(None),
         _ => Err(ApiError::internal()),
     }
@@ -231,13 +239,12 @@ async fn create_channel(
     .bind(Uuid::new_v4().simple().to_string())
     .fetch_one(&mut *tx)
     .await?;
-    sqlx::query(
-        "INSERT INTO channel_members (channel_id, user_id, role) VALUES ($1, $2, 'CREATOR')",
-    )
-    .bind(channel.0)
-    .bind(actor.user_id.0)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("INSERT INTO channel_members (channel_id, user_id, role_id) VALUES ($1, $2, $3)")
+        .bind(channel.0)
+        .bind(actor.user_id.0)
+        .bind(ChannelRole::Creator as i32)
+        .execute(&mut *tx)
+        .await?;
     sync::emit(
         &mut tx,
         sync::Scope::Channel(channel),
@@ -306,8 +313,12 @@ async fn update_channel(
         .map(|id| id.map(|id| id.0))
         .unwrap_or(current.background_upload_id);
     for (previous, next, purpose) in [
-        (current.icon_upload_id, icon, "ICON"),
-        (current.background_upload_id, background, "BACKGROUND"),
+        (current.icon_upload_id, icon, "CHANNEL_ICON"),
+        (
+            current.background_upload_id,
+            background,
+            "CHANNEL_BACKGROUND",
+        ),
     ] {
         if previous == next {
             continue;
@@ -507,7 +518,10 @@ async fn invite(
     if actor.user_id != target {
         db::lock_pair(&mut tx, actor.user_id, target).await?;
     }
-    channel_manager(&mut tx, channel, actor.user_id).await?;
+    let data = channel_manager(&mut tx, channel, actor.user_id).await?;
+    if data.join_mode != "INVITE_ONLY" {
+        return Err(ApiError::conflict("INVITATION_UNAVAILABLE"));
+    }
     let invitation = create_invitation(&state, &mut tx, channel, actor.user_id, target)
         .await?
         .ok_or_else(|| ApiError::conflict("INVITATION_UNAVAILABLE"))?;
@@ -559,6 +573,7 @@ async fn resolve_invitation(
         Decision::Decline => "DECLINED",
         Decision::Accept
             if channel_data.is_available
+                && role(&mut tx, channel, actor.user_id).await?.is_none()
                 && role(&mut tx, channel, inviter)
                     .await?
                     .is_some_and(ChannelRole::manages_channel)
@@ -632,11 +647,12 @@ async fn join_link(
 
 async fn add_member(conn: &mut PgConnection, channel: Id, user: Id) -> Result<()> {
     let inserted = sqlx::query(
-        "INSERT INTO channel_members (channel_id, user_id, role) VALUES ($1, $2, 'MEMBER')
+        "INSERT INTO channel_members (channel_id, user_id, role_id) VALUES ($1, $2, $3)
          ON CONFLICT DO NOTHING",
     )
     .bind(channel.0)
     .bind(user.0)
+    .bind(ChannelRole::Member as i32)
     .execute(&mut *conn)
     .await?;
     if inserted.rows_affected() == 0 {
@@ -703,6 +719,7 @@ async fn remove_member(
     .bind(target.0)
     .execute(&mut *tx)
     .await?;
+    clear_channel_denials(&mut tx, channel, target).await?;
     sqlx::query("DELETE FROM channel_members WHERE channel_id = $1 AND user_id = $2")
         .bind(channel.0)
         .bind(target.0)
@@ -751,11 +768,14 @@ async fn update_role(
     let previous = role(&mut tx, channel, target)
         .await?
         .ok_or_else(ApiError::not_found)?;
-    let next = body.role.as_str();
-    let event = json!({ "channel_id": channel, "roles": [{ "user_id": target, "role": next }] });
-    let promote = matches!(body.role, EditableRole::Moderator);
-    if promote != (previous == ChannelRole::Moderator) {
-        set_role(&mut tx, channel, target, next).await?;
+    let next = body.role.channel_role();
+    let event = json!({
+        "channel_id": channel, "roles": [{ "user_id": target, "role": body.role.as_str() }]
+    });
+    let promote = next == ChannelRole::Moderator;
+    if next != previous {
+        let before = visible_private_rooms(&mut tx, channel, target).await?;
+        let removed_denials = set_role(&mut tx, channel, target, next).await?;
         if !promote {
             cancel_invitations(&mut tx, channel, Some(target)).await?;
         }
@@ -766,7 +786,7 @@ async fn update_role(
             event.clone(),
         )
         .await?;
-        change_role_visibility(&mut tx, channel, target, promote).await?;
+        change_role_visibility(&mut tx, channel, target, &before, &removed_denials).await?;
         if !promote {
             voice::revoke_invalid(&mut tx).await?;
         }
@@ -791,7 +811,7 @@ async fn transfer_ownership(
     if actor_role != ChannelRole::Creator || actor.user_id == target {
         return Err(ApiError::forbidden());
     }
-    let previous = role(&mut tx, channel, target)
+    role(&mut tx, channel, target)
         .await?
         .ok_or_else(ApiError::not_found)?;
     let available: bool = sqlx::query_scalar("SELECT is_available FROM users WHERE id = $1")
@@ -801,8 +821,9 @@ async fn transfer_ownership(
     if !available {
         return Err(ApiError::conflict("MEMBER_UNAVAILABLE"));
     }
-    set_role(&mut tx, channel, actor.user_id, "MODERATOR").await?;
-    set_role(&mut tx, channel, target, "CREATOR").await?;
+    let before = visible_private_rooms(&mut tx, channel, target).await?;
+    set_role(&mut tx, channel, actor.user_id, ChannelRole::Moderator).await?;
+    let removed_denials = set_role(&mut tx, channel, target, ChannelRole::Creator).await?;
     sqlx::query("UPDATE channels SET creator_id = $2 WHERE id = $1")
         .bind(channel.0)
         .bind(target.0)
@@ -822,21 +843,39 @@ async fn transfer_ownership(
         event.clone(),
     )
     .await?;
-    if previous == ChannelRole::Member {
-        change_role_visibility(&mut tx, channel, target, true).await?;
-    }
+    change_role_visibility(&mut tx, channel, target, &before, &removed_denials).await?;
     tx.commit().await?;
     Ok(Json(event))
 }
 
-async fn set_role(conn: &mut PgConnection, channel: Id, user: Id, role: &str) -> Result<()> {
-    sqlx::query("UPDATE channel_members SET role = $3 WHERE channel_id = $1 AND user_id = $2")
+async fn set_role(
+    conn: &mut PgConnection,
+    channel: Id,
+    user: Id,
+    role: ChannelRole,
+) -> Result<Vec<i64>> {
+    sqlx::query("UPDATE channel_members SET role_id = $3 WHERE channel_id = $1 AND user_id = $2")
         .bind(channel.0)
         .bind(user.0)
-        .bind(role)
-        .execute(conn)
+        .bind(role as i32)
+        .execute(&mut *conn)
         .await?;
-    Ok(())
+    if role == ChannelRole::Moderator {
+        return Ok(Vec::new());
+    }
+    clear_channel_denials(conn, channel, user).await
+}
+
+async fn clear_channel_denials(conn: &mut PgConnection, channel: Id, user: Id) -> Result<Vec<i64>> {
+    Ok(sqlx::query_scalar(
+        "DELETE FROM room_moderator_denials d USING rooms r
+         WHERE d.room_id = r.id AND r.channel_id = $1 AND d.user_id = $2
+         RETURNING d.room_id",
+    )
+    .bind(channel.0)
+    .bind(user.0)
+    .fetch_all(conn)
+    .await?)
 }
 
 #[derive(FromRow)]
@@ -1014,8 +1053,12 @@ async fn delete_category(
     db::lock_session(&mut tx, &actor).await?;
     channel_manager(&mut tx, channel, actor.user_id).await?;
     require_category(&mut tx, channel, Some(category.0)).await?;
-    let mut ungrouped = room_order(&mut tx, channel, None).await?;
-    ungrouped.extend(room_order(&mut tx, channel, Some(category.0)).await?);
+    let mut ungrouped = room_order(&mut tx, channel, None, actor.user_id).await?;
+    let grouped = room_order(&mut tx, channel, Some(category.0), actor.user_id).await?;
+    if !grouped.reserved.is_empty() {
+        return Err(ApiError::forbidden());
+    }
+    ungrouped.ids.extend(grouped.ids);
     write_room_order(&mut tx, None, &ungrouped).await?;
     sqlx::query("UPDATE rooms SET category_id = NULL WHERE channel_id = $1 AND category_id = $2")
         .bind(channel.0)
@@ -1171,20 +1214,24 @@ async fn change_role_visibility(
     conn: &mut PgConnection,
     channel: Id,
     user: Id,
-    gained: bool,
+    before: &BTreeSet<i64>,
+    removed_denials: &[i64],
 ) -> Result<()> {
-    let rooms: Vec<Room> = sqlx::query_as(
-        "SELECT r.* FROM rooms r WHERE r.channel_id = $1 AND r.private AND r.is_available
-         AND NOT EXISTS (SELECT 1 FROM room_members m WHERE m.room_id = r.id AND m.user_id = $2)
-         ORDER BY r.id FOR UPDATE OF r",
-    )
-    .bind(channel.0)
-    .bind(user.0)
-    .fetch_all(&mut *conn)
-    .await?;
+    let after = visible_private_rooms(conn, channel, user).await?;
+    if before == &after {
+        return Ok(());
+    }
+    let changed: Vec<_> = before.symmetric_difference(&after).copied().collect();
+    let rooms: Vec<Room> =
+        sqlx::query_as("SELECT * FROM rooms WHERE id = ANY($1) ORDER BY id FOR UPDATE")
+            .bind(changed)
+            .fetch_all(&mut *conn)
+            .await?;
     for room in rooms {
-        if gained {
-            room.initialize_reads(conn, &[user]).await?;
+        if after.contains(&room.id) {
+            if !removed_denials.contains(&room.id) {
+                room.initialize_reads(conn, &[user]).await?;
+            }
             room.emit(conn, "ROOM_CREATE", vec![user]).await?;
         } else {
             room.revoke(conn, vec![user]).await?;
@@ -1193,34 +1240,108 @@ async fn change_role_visibility(
     Ok(())
 }
 
+async fn visible_private_rooms(
+    conn: &mut PgConnection,
+    channel: Id,
+    user: Id,
+) -> Result<BTreeSet<i64>> {
+    let ids: Vec<i64> = sqlx::query_scalar(
+        "SELECT r.id FROM rooms r JOIN channel_room_access access ON access.room_id = r.id
+         WHERE r.channel_id = $1 AND r.private AND access.user_id = $2",
+    )
+    .bind(channel.0)
+    .bind(user.0)
+    .fetch_all(conn)
+    .await?;
+    Ok(ids.into_iter().collect())
+}
+
+struct RoomOrder {
+    ids: Vec<i64>,
+    reserved: BTreeSet<i32>,
+}
+
+impl RoomOrder {
+    fn positions(&self) -> impl Iterator<Item = i32> + '_ {
+        (0..).filter(|position| !self.reserved.contains(position))
+    }
+
+    fn place(&mut self, id: i64, requested: Option<u32>) -> Result<i32> {
+        let placement = {
+            let mut slots = self.positions().take(self.ids.len() + 1).enumerate();
+            match requested {
+                Some(requested) => slots.find(|&(_, position)| position as u32 == requested),
+                None => slots.last(),
+            }
+        };
+        let (index, position) = placement.ok_or_else(|| ApiError::bad("INVALID_POSITION"))?;
+        self.ids.insert(index, id);
+        Ok(position)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn room_position_includes_hidden_slots() {
+        let mut order = RoomOrder {
+            ids: vec![11],
+            reserved: BTreeSet::from([0, 2]),
+        };
+
+        assert_eq!(order.place(22, Some(3)).ok(), Some(3));
+        assert_eq!(order.ids, [11, 22]);
+    }
+}
+
 async fn room_order(
     conn: &mut PgConnection,
     channel: Id,
     category: Option<i64>,
-) -> Result<Vec<i64>> {
-    Ok(sqlx::query_scalar(
-        "SELECT id FROM rooms WHERE channel_id = $1 AND is_available
-         AND category_id IS NOT DISTINCT FROM $2 ORDER BY position, id",
+    manager: Id,
+) -> Result<RoomOrder> {
+    let rows: Vec<(i64, i32, bool)> = sqlx::query_as(
+        "SELECT r.id, r.position, d.user_id IS NOT NULL
+         FROM rooms r LEFT JOIN room_moderator_denials d ON d.room_id = r.id AND d.user_id = $3
+         WHERE r.channel_id = $1 AND r.is_available
+           AND r.category_id IS NOT DISTINCT FROM $2 ORDER BY r.position, r.id",
     )
     .bind(channel.0)
     .bind(category)
+    .bind(manager.0)
     .fetch_all(conn)
-    .await?)
+    .await?;
+    let mut order = RoomOrder {
+        ids: Vec::new(),
+        reserved: BTreeSet::new(),
+    };
+    for (id, position, denied) in rows {
+        if denied {
+            order.reserved.insert(position);
+        } else {
+            order.ids.push(id);
+        }
+    }
+    Ok(order)
 }
 
 async fn write_room_order(
     conn: &mut PgConnection,
     category: Option<i64>,
-    ids: &[i64],
+    order: &RoomOrder,
 ) -> Result<()> {
+    let positions: Vec<_> = order.positions().take(order.ids.len()).collect();
     let updated: Vec<Room> = sqlx::query_as(
-        "UPDATE rooms r SET category_id = $1, position = sort.ordinal - 1
-         FROM unnest($2::bigint[]) WITH ORDINALITY AS sort(id, ordinal)
-         WHERE r.id = sort.id AND (r.category_id IS DISTINCT FROM $1 OR r.position <> sort.ordinal - 1)
+        "UPDATE rooms r SET category_id = $1, position = sort.position
+         FROM unnest($2::bigint[], $3::integer[]) AS sort(id, position)
+         WHERE r.id = sort.id AND (r.category_id IS DISTINCT FROM $1 OR r.position <> sort.position)
          RETURNING r.*",
     )
     .bind(category)
-    .bind(ids)
+    .bind(&order.ids)
+    .bind(positions)
     .fetch_all(&mut *conn)
     .await?;
     for room in updated {
@@ -1260,10 +1381,10 @@ async fn assigned_roles(
     conn: &mut PgConnection,
     channel: Id,
     users: &BTreeSet<i64>,
-) -> Result<BTreeMap<i64, String>> {
+) -> Result<BTreeMap<i64, i32>> {
     let ids: Vec<_> = users.iter().copied().collect();
-    let roles: Vec<(i64, String)> = sqlx::query_as(
-        "SELECT user_id, role FROM channel_members WHERE channel_id = $1 AND user_id = ANY($2)",
+    let roles: Vec<(i64, i32)> = sqlx::query_as(
+        "SELECT user_id, role_id FROM channel_members WHERE channel_id = $1 AND user_id = ANY($2)",
     )
     .bind(channel.0)
     .bind(ids)
@@ -1331,9 +1452,9 @@ async fn create_room(
     channel_manager(&mut tx, channel, actor.user_id).await?;
     require_category(&mut tx, channel, category).await?;
     assigned_roles(&mut tx, channel, &members).await?;
-    let mut order = room_order(&mut tx, channel, category).await?;
+    let mut order = room_order(&mut tx, channel, category, actor.user_id).await?;
     let room_id = state.id().await?;
-    let position = place(&mut order, room_id.0, body.position)?;
+    let position = order.place(room_id.0, body.position)?;
     let room: Room = sqlx::query_as(
         "INSERT INTO rooms (id, channel_id, category_id, name, kind, private, position)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
@@ -1374,6 +1495,48 @@ struct UpdateRoom {
     member_ids: Option<Vec<Id>>,
     #[serde(default, deserialize_with = "supplied")]
     room_mod_ids: Option<Vec<Id>>,
+    #[serde(default, deserialize_with = "supplied")]
+    denied_moderator_ids: Option<Vec<Id>>,
+}
+
+async fn update_room_denials(
+    conn: &mut PgConnection,
+    room: &Room,
+    body: &UpdateRoom,
+) -> Result<Vec<Id>> {
+    let private = body.is_private.unwrap_or(room.private);
+    if private && body.denied_moderator_ids.is_none() {
+        return Ok(Vec::new());
+    }
+    let ids = member_ids(body.denied_moderator_ids.as_deref().unwrap_or_default())?;
+    if !ids.is_empty() {
+        if !private
+            || assigned_roles(conn, Id(room.channel_id), &ids)
+                .await?
+                .values()
+                .any(|role| *role != ChannelRole::Moderator as i32)
+        {
+            return Err(ApiError::bad("INVALID_DENIED_MODERATOR"));
+        }
+    }
+    let ids: Vec<_> = ids.into_iter().collect();
+    let removed = sqlx::query_scalar(
+        "DELETE FROM room_moderator_denials WHERE room_id = $1 AND user_id <> ALL($2)
+         RETURNING user_id",
+    )
+    .bind(room.id)
+    .bind(&ids)
+    .fetch_all(&mut *conn)
+    .await?;
+    sqlx::query(
+        "INSERT INTO room_moderator_denials (room_id, user_id)
+         SELECT $1, user_id FROM unnest($2::bigint[]) AS ids(user_id) ON CONFLICT DO NOTHING",
+    )
+    .bind(room.id)
+    .bind(ids)
+    .execute(conn)
+    .await?;
+    Ok(removed)
 }
 
 async fn update_room_members(
@@ -1431,7 +1594,7 @@ async fn update_room_members(
             .collect();
         let roles = assigned_roles(conn, Id(room.channel_id), &candidates).await?;
         for (id, role) in roles {
-            if role != "MEMBER" {
+            if role != ChannelRole::Member as i32 {
                 if previous.contains_key(&id) {
                     users.insert(id);
                 } else {
@@ -1459,6 +1622,10 @@ async fn update_room(
     db::lock_session(&mut tx, &actor).await?;
     let (_, role) = channel_member(&mut tx, channel, actor.user_id).await?;
     let room = locked_room(&mut tx, channel, id).await?;
+    db::room_access(&mut tx, actor.user_id, id).await?;
+    if body.denied_moderator_ids.is_some() && role != ChannelRole::Creator {
+        return Err(ApiError::forbidden());
+    }
     let members: Vec<(i64, bool)> =
         sqlx::query_as("SELECT user_id, is_room_mod FROM room_members WHERE room_id = $1")
             .bind(id.0)
@@ -1488,12 +1655,16 @@ async fn update_room(
         .unwrap_or(room.category_id);
     require_category(&mut tx, channel, category).await?;
     update_room_members(&mut tx, &room, manager, &members, &body).await?;
+    let removed_denials = update_room_denials(&mut tx, &room, &body).await?;
     let moving = category != room.category_id;
-    let new_order = if moving || body.position.is_some() {
-        let mut ids = room_order(&mut tx, channel, category).await?;
-        ids.retain(|existing| *existing != id.0);
-        let position = place(&mut ids, id.0, body.position)?;
-        Some((ids, position))
+    let repositioning = body
+        .position
+        .is_some_and(|position| position != room.position as u32);
+    let new_order = if moving || repositioning {
+        let mut order = room_order(&mut tx, channel, category, actor.user_id).await?;
+        order.ids.retain(|existing| *existing != id.0);
+        let position = order.place(id.0, body.position)?;
+        Some((order, position))
     } else {
         None
     };
@@ -1512,7 +1683,12 @@ async fn update_room(
     let gained: Vec<_> = after.difference(&before).copied().map(Id).collect();
     let retained: Vec<_> = after.intersection(&before).copied().map(Id).collect();
     let lost: Vec<_> = before.difference(&after).copied().map(Id).collect();
-    updated.initialize_reads(&mut tx, &gained).await?;
+    let initialize_reads: Vec<_> = gained
+        .iter()
+        .copied()
+        .filter(|user| !updated.private || !removed_denials.contains(user))
+        .collect();
+    updated.initialize_reads(&mut tx, &initialize_reads).await?;
     updated.emit(&mut tx, "ROOM_CREATE", gained).await?;
     updated.emit(&mut tx, "ROOM_UPDATE", retained).await?;
     let revoked = !lost.is_empty();
@@ -1520,11 +1696,11 @@ async fn update_room(
         updated.revoke(&mut tx, lost).await?;
         voice::revoke_invalid(&mut tx).await?;
     }
-    if let Some((ids, _)) = new_order {
-        write_room_order(&mut tx, category, &ids).await?;
+    if let Some((order, _)) = new_order {
+        write_room_order(&mut tx, category, &order).await?;
     }
     if moving {
-        let old_order = room_order(&mut tx, channel, room.category_id).await?;
+        let old_order = room_order(&mut tx, channel, room.category_id, actor.user_id).await?;
         write_room_order(&mut tx, room.category_id, &old_order).await?;
     }
     tx.commit().await?;
@@ -1551,12 +1727,17 @@ async fn delete_room(
     db::lock_session(&mut tx, &actor).await?;
     channel_manager(&mut tx, channel, actor.user_id).await?;
     let room = locked_room(&mut tx, channel, id).await?;
+    db::room_access(&mut tx, actor.user_id, id).await?;
     let viewers = db::room_viewers(&mut tx, id).await?;
     sqlx::query("UPDATE rooms SET is_available = false WHERE id = $1")
         .bind(id.0)
         .execute(&mut *tx)
         .await?;
-    let remaining = room_order(&mut tx, channel, room.category_id).await?;
+    sqlx::query("DELETE FROM room_moderator_denials WHERE room_id = $1")
+        .bind(id.0)
+        .execute(&mut *tx)
+        .await?;
+    let remaining = room_order(&mut tx, channel, room.category_id, actor.user_id).await?;
     write_room_order(&mut tx, room.category_id, &remaining).await?;
     room.revoke(&mut tx, viewers).await?;
     voice::revoke_invalid(&mut tx).await?;
@@ -1596,17 +1777,21 @@ async fn order_rooms(
             return Err(ApiError::bad("INVALID_ORDER"));
         }
         require_category(&mut tx, channel, category).await?;
-        let previous = room_order(&mut tx, channel, category).await?;
+        let mut order = room_order(&mut tx, channel, category, actor.user_id).await?;
         let ids: Vec<_> = group.room_ids.into_iter().map(|id| id.0).collect();
-        check_order(&previous, &ids)?;
+        check_order(&order.ids, &ids)?;
         supplied += ids.len();
-        write_room_order(&mut tx, category, &ids).await?;
+        order.ids = ids;
+        write_room_order(&mut tx, category, &order).await?;
     }
-    let total: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM rooms WHERE channel_id = $1 AND is_available")
-            .bind(channel.0)
-            .fetch_one(&mut *tx)
-            .await?;
+    let total: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM rooms r JOIN channel_room_access a ON a.room_id = r.id
+         WHERE r.channel_id = $1 AND a.user_id = $2",
+    )
+    .bind(channel.0)
+    .bind(actor.user_id.0)
+    .fetch_one(&mut *tx)
+    .await?;
     if !groups.contains(&None) || supplied as i64 != total {
         return Err(ApiError::bad("INVALID_ORDER"));
     }

@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use sqlx::PgConnection;
 
 use crate::{
@@ -35,7 +36,7 @@ pub fn routes() -> Router<AppState> {
 #[serde(deny_unknown_fields)]
 struct SendMessage {
     client_id: String,
-    content: String,
+    content: Option<String>,
     #[serde(default)]
     upload_ids: Vec<Id>,
 }
@@ -120,7 +121,7 @@ fn valid_content(content: &str, attachments: bool) -> Result<()> {
 
 const MESSAGE_VIEW: &str = "SELECT jsonb_build_object(
     'message_id',m.id::text,'room_id',m.room_id::text,'sender_id',m.sender_id::text,
-    'client_id',m.client_id,'room_sequence',m.sequence::text,'content',m.content,
+    'client_id',m.client_id,'room_sequence',m.sequence::text,'content',COALESCE(m.content,''),
     'time_created',m.created_at,'time_edited',m.edited_at,
     'attachments',COALESCE((SELECT jsonb_agg(jsonb_build_object('attachment_id',a.id::text,
         'file_name',u.file_name,'mime_type',u.mime_type,'file_size_bytes',u.size_bytes) ORDER BY a.id)
@@ -150,39 +151,46 @@ async fn send(
     State(state): State<AppState>,
     actor: Actor,
     Path(room): Path<Id>,
-    Body(input): Body<SendMessage>,
+    Body(mut input): Body<SendMessage>,
 ) -> Result<(StatusCode, Json<Value>)> {
-    if input.client_id.trim().is_empty()
-        || input.client_id.chars().count() > 128
-        || input.client_id.contains('\0')
-    {
+    let client_id_len = input.client_id.chars().count();
+    if input.client_id.trim().is_empty() || client_id_len > 128 || input.client_id.contains('\0') {
         return Err(ApiError::bad("INVALID_CLIENT_ID"));
     }
-    valid_content(&input.content, !input.upload_ids.is_empty())?;
-    let distinct: std::collections::HashSet<_> = input.upload_ids.iter().collect();
-    if input.upload_ids.len() > 5 || distinct.len() != input.upload_ids.len() {
+    let content = input.content.as_deref().unwrap_or_default();
+    valid_content(content, !input.upload_ids.is_empty())?;
+    if input.upload_ids.len() > 5 {
         return Err(ApiError::bad("INVALID_UPLOADS"));
     }
-    // Upload verification uses S3, so it must happen outside the room write lock.
-    let verified = if input.upload_ids.is_empty() {
-        Vec::new()
-    } else {
-        if let Some(value) = retry_existing(&state, &actor, room, &input.client_id).await? {
+    input.upload_ids.sort_unstable();
+    if input.upload_ids.windows(2).any(|ids| ids[0] == ids[1]) {
+        return Err(ApiError::bad("INVALID_UPLOADS"));
+    }
+    let hash = request_hash(content, &input.upload_ids);
+    // S3 verification happens outside the room write lock. Older client IDs remain retryable.
+    if !input.upload_ids.is_empty() || client_id_len > 64 {
+        if let Some(value) = retry_existing(&state, &actor, room, &input.client_id, &hash).await? {
             return Ok((StatusCode::OK, Json(value)));
         }
-        match files::verify_uploads(&state, actor.user_id, room, &input.upload_ids).await {
-            Ok(uploads) => uploads,
-            Err(error) => {
-                if let Some(value) = retry_existing(&state, &actor, room, &input.client_id).await? {
-                    return Ok((StatusCode::OK, Json(value)));
-                }
-                return Err(error);
+        if client_id_len > 64 {
+            return Err(ApiError::bad("INVALID_CLIENT_ID"));
+        }
+    }
+    let verified = match files::verify_uploads(&state, actor.user_id, room, &input.upload_ids).await
+    {
+        Ok(uploads) => uploads,
+        Err(error) => {
+            if let Some(value) =
+                retry_existing(&state, &actor, room, &input.client_id, &hash).await?
+            {
+                return Ok((StatusCode::OK, Json(value)));
             }
+            return Err(error);
         }
     };
     let mut tx = state.pool.begin().await?;
     writable(&db::lock_room_write(&mut tx, &actor, room).await?)?;
-    if let Some(value) = existing(&mut tx, actor.user_id, room, &input.client_id).await? {
+    if let Some(value) = existing(&mut tx, actor.user_id, room, &input.client_id, &hash).await? {
         tx.commit().await?;
         return Ok((StatusCode::OK, Json(value)));
     }
@@ -194,7 +202,10 @@ async fn send(
     .fetch_one(&mut *tx)
     .await?;
     sqlx::query("INSERT INTO messages(id,room_id,sender_id,client_id,sequence,content) VALUES($1,$2,$3,$4,$5,$6)")
-        .bind(id.0).bind(room.0).bind(actor.user_id.0).bind(input.client_id).bind(sequence).bind(input.content)
+        .bind(id.0).bind(room.0).bind(actor.user_id.0).bind(&input.client_id).bind(sequence).bind(content_for_storage(content))
+        .execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO message_send_receipts(room_id,sender_id,client_id,message_id,request_hash) VALUES($1,$2,$3,$4,$5)")
+        .bind(room.0).bind(actor.user_id.0).bind(&input.client_id).bind(id.0).bind(hash)
         .execute(&mut *tx).await?;
     files::attach_message(&state, &mut tx, actor.user_id, room, id, verified).await?;
     let view = message_view(&mut tx, actor.user_id, room, id).await?;
@@ -209,15 +220,31 @@ async fn send(
     Ok((StatusCode::CREATED, Json(view)))
 }
 
+fn content_for_storage(content: &str) -> Option<&str> {
+    (!content.is_empty()).then_some(content)
+}
+
+fn request_hash(content: &str, sorted_upload_ids: &[Id]) -> String {
+    // Match the migration backfill and the existing canonical upload order.
+    let mut hash = Sha256::new();
+    hash.update((content.len() as i64).to_be_bytes());
+    hash.update(content.as_bytes());
+    for id in sorted_upload_ids {
+        hash.update(id.0.to_be_bytes());
+    }
+    hex::encode(hash.finalize())
+}
+
 async fn retry_existing(
     state: &AppState,
     actor: &Actor,
     room: Id,
     client_id: &str,
+    hash: &str,
 ) -> Result<Option<Value>> {
     let mut tx = state.pool.begin().await?;
     writable(&db::lock_room_write(&mut tx, actor, room).await?)?;
-    let previous = existing(&mut tx, actor.user_id, room, client_id).await?;
+    let previous = existing(&mut tx, actor.user_id, room, client_id, hash).await?;
     tx.commit().await?;
     Ok(previous)
 }
@@ -227,24 +254,26 @@ async fn existing(
     user: Id,
     room: Id,
     client_id: &str,
+    hash: &str,
 ) -> Result<Option<Value>> {
-    let existing = sqlx::query_scalar::<_, Id>(
-        "SELECT id FROM messages WHERE room_id=$1 AND sender_id=$2 AND client_id=$3",
+    let previous: Option<(Option<String>, Option<Id>)> = sqlx::query_as(
+        "SELECT r.request_hash, m.id FROM message_send_receipts r
+         LEFT JOIN messages m ON m.id=r.message_id
+         WHERE r.room_id=$1 AND r.sender_id=$2 AND r.client_id=$3",
     )
     .bind(room.0)
     .bind(user.0)
     .bind(client_id)
     .fetch_optional(&mut *conn)
     .await?;
-    if let Some(id) = existing {
-        return Ok(Some(message_view(conn, user, room, id).await?));
+    let Some((stored_hash, message)) = previous else {
+        return Ok(None);
+    };
+    if stored_hash.is_some_and(|stored| stored != hash) {
+        return Err(ApiError::conflict("CLIENT_ID_REUSED"));
     }
-    let deleted = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM deleted_message_keys WHERE room_id=$1 AND sender_id=$2 AND client_id=$3 AND expires_at>now())")
-        .bind(room.0).bind(user.0).bind(client_id).fetch_one(conn).await?;
-    if deleted {
-        return Err(ApiError::conflict("MESSAGE_DELETED"));
-    }
-    Ok(None)
+    let id = message.ok_or_else(|| ApiError::conflict("MESSAGE_DELETED"))?;
+    Ok(Some(message_view(conn, user, room, id).await?))
 }
 
 async fn history(
@@ -327,9 +356,9 @@ async fn edit(
             .await?;
     valid_content(&input.content, has_upload)?;
     let changed =
-        sqlx::query("UPDATE messages SET content=$2,edited_at=now() WHERE id=$1 AND content<>$2")
+        sqlx::query("UPDATE messages SET content=$2,edited_at=now() WHERE id=$1 AND content IS DISTINCT FROM $2")
             .bind(message.0)
-            .bind(input.content)
+            .bind(content_for_storage(&input.content))
             .execute(&mut *tx)
             .await?
             .rows_affected()
@@ -366,20 +395,16 @@ async fn remove(
     let mut tx = state.pool.begin().await?;
     let access = db::lock_room_write(&mut tx, &actor, room).await?;
     writable(&access)?;
-    let (author, client_id, sequence): (Id, String, i64) = sqlx::query_as(
-        "SELECT sender_id,client_id,sequence FROM messages WHERE room_id=$1 AND id=$2",
-    )
-    .bind(room.0)
-    .bind(message.0)
-    .fetch_one(&mut *tx)
-    .await?;
+    let (author, sequence): (Id, i64) =
+        sqlx::query_as("SELECT sender_id,sequence FROM messages WHERE room_id=$1 AND id=$2")
+            .bind(room.0)
+            .bind(message.0)
+            .fetch_one(&mut *tx)
+            .await?;
     if author != actor.user_id && !access.moderate {
         return Err(ApiError::forbidden());
     }
     files::discard_message(&mut tx, message).await?;
-    sqlx::query("INSERT INTO deleted_message_keys(room_id,sender_id,client_id,expires_at) VALUES ($1,$2,$3,now()+interval '24 hours')
-                 ON CONFLICT(room_id,sender_id,client_id) DO UPDATE SET expires_at=excluded.expires_at")
-        .bind(room.0).bind(author.0).bind(client_id).execute(&mut *tx).await?;
     sqlx::query("DELETE FROM messages WHERE id=$1")
         .bind(message.0)
         .execute(&mut *tx)
@@ -396,7 +421,7 @@ async fn remove(
 }
 
 fn valid_reaction(value: &str) -> Result<()> {
-    if value.trim().is_empty() || value.chars().count() > 32 || value.chars().any(char::is_control)
+    if value.trim().is_empty() || value.chars().count() > 50 || value.chars().any(char::is_control)
     {
         return Err(ApiError::bad("INVALID_REACTION"));
     }
@@ -433,7 +458,7 @@ async fn change_reaction(
     message_author(&mut tx, room, message).await?;
     let changed = if let Some(value) = reaction {
         sqlx::query("INSERT INTO message_reactions(message_id,user_id,reaction_type) VALUES($1,$2,$3)
-                     ON CONFLICT(message_id,user_id) DO UPDATE SET reaction_type=excluded.reaction_type
+                     ON CONFLICT(message_id,user_id) DO UPDATE SET reaction_type=excluded.reaction_type,time_reacted=excluded.time_reacted
                      WHERE message_reactions.reaction_type<>excluded.reaction_type")
             .bind(message.0).bind(actor.user_id.0).bind(value).execute(&mut *tx).await?
     } else {
@@ -473,8 +498,8 @@ async fn reactions(
     text_room(&db::room_access(&mut tx, actor.user_id, room).await?)?;
     message_author(&mut tx, room, message).await?;
     let mut rows: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('user_id',u.id::text,'username',u.username,
-        'full_name',d.full_name,'avatar_url',CASE WHEN d.avatar_upload_id IS NOT NULL THEN '/api/v1/images/'||d.avatar_upload_id||'/url' END,
-        'reaction_type',r.reaction_type) FROM message_reactions r JOIN users u ON u.id=r.user_id AND u.is_available
+        'full_name',u.full_name,'avatar_url',CASE WHEN d.avatar_upload_id IS NOT NULL THEN '/api/v1/images/'||d.avatar_upload_id||'/url' END,
+        'reaction_type',r.reaction_type,'time_reacted',r.time_reacted) FROM message_reactions r JOIN users u ON u.id=r.user_id AND u.is_available
         JOIN user_details d ON d.user_id=u.id WHERE r.message_id=$1 AND u.id>$2 AND ($3::text IS NULL OR r.reaction_type=$3)
         ORDER BY u.id LIMIT $4")
         .bind(message.0).bind(query.cursor.map_or(0, |id| id.0)).bind(query.reaction_type).bind(limit+1).fetch_all(&mut *tx).await?;

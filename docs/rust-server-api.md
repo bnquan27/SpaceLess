@@ -7,7 +7,7 @@
 - Gửi JWT ứng dụng qua `Authorization: Bearer <token>` cho route bảo vệ. Actor và quyền lấy từ phiên đã xác minh và dữ liệu hiện tại. Các ID user trong URL hoặc body chỉ là đối tượng của thao tác.
 - Snowflake là chuỗi thập phân dương vừa `BIGINT`, kể cả trong path, query và JWT `sub`. `room_sequence` và `last_read_sequence` là bộ đếm theo Phòng. Đề xuất mã hóa cả sequence dưới dạng chuỗi thập phân để giữ đủ độ chính xác. Ngày dùng `YYYY-MM-DD`, thời điểm dùng RFC 3339 UTC.
 - `GET` dùng path/query. `POST`, `PUT`, `PATCH` dùng JSON. `DELETE` dùng path/query. Từ chối trường lạ. Với `PATCH`, trường vắng giữ nguyên và `null` xóa giá trị nullable, ví dụ `category_id`.
-- DTO hồ sơ công khai chỉ gồm `user_id`, `username`, `full_name`, `avatar_url` và trạng thái quan hệ phù hợp với người xem. Chỉ route hồ sơ chính chủ trả dữ liệu riêng. DTO và event không chứa hash, `storage_key`, `session_jti` hay chiều chặn của người khác.
+- DTO hồ sơ công khai chỉ gồm `user_id`, `username`, `full_name`, `avatar_url` và trạng thái quan hệ phù hợp với người xem. Chỉ route hồ sơ chính chủ trả dữ liệu riêng. DTO và event không chứa hash, `storage_key`, `session_id` hay chiều chặn của người khác.
 - Đề xuất trả `201` khi tạo tài nguyên, `200` khi trả dữ liệu hoặc trả lại tài nguyên đã có, `204` khi thành công không có body. Lỗi JSON có `error.code`, `error.message` và `request_id`. `400` cho schema sai, `401` cho phiên không hợp lệ, `403` cho thao tác thiếu quyền trên tài nguyên đã thấy, `404` cho tài nguyên không tồn tại hoặc bị ẩn, `409` cho xung đột trạng thái, `429` kèm `Retry-After` khi bị giới hạn và `503` khi phụ thuộc bắt buộc tạm lỗi. Lỗi kết bạn, mời hoặc mở DM không tiết lộ bên chặn.
 
 ## REST theo đặc tả
@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | `POST /auth/register` | `username`, `password`, `full_name`, `date_of_birth`, `email`, `phone` | Công khai. Tạo hồ sơ chính chủ, ngày sinh không ở tương lai. |
 | `POST /auth/login` | `username`, `password` | Công khai. Trả `access_token`, `expires_at`. Sai tài khoản hoặc mật khẩu dùng chung thông báo. Chỉ báo khóa sau khi xác minh mật khẩu. |
-| `POST /auth/refresh` | Bearer của phiên còn hiệu lực | Trả JWT và hạn mới của cùng phiên logic. |
+| `POST /auth/refresh` | Bearer còn hiệu lực | Trả JWT có `jti` mới, giữ `sid` và thu hồi JWT cũ. Mở lại WebSocket bằng JWT mới. |
 | `POST /auth/logout` | Bearer của phiên | Thu hồi đúng phiên, đóng WS và media mà phiên sở hữu. |
 | `POST /auth/forgot-password` | `email` | Công khai, rate-limit. Trả thông báo trung tính. |
 | `POST /auth/reset-password` | `token`, `new_password` | Công khai với reset token còn hiệu lực. Đổi mật khẩu và thu hồi toàn bộ phiên. |
@@ -64,7 +64,7 @@ Mã mời công khai chỉ hiện với Creator/Moderator trong payload Kênh ph
 | `DELETE /channels/{channel_id}/categories/{category_id}` | Path | Creator/Moderator xóa cứng nhóm, chuyển Phòng về cuối danh sách không nhóm. |
 | `PUT /channels/{channel_id}/categories/order` | `category_ids` | Creator/Moderator gửi danh sách đầy đủ, mỗi ID hợp lệ xuất hiện đúng một lần. |
 | `POST /channels/{channel_id}/rooms` | `room_name`, `type: TEXT` hoặc `VOICE`, `is_private`, `category_id?`, `position?`, `member_ids?` | Creator/Moderator tạo Phòng. Phòng TEXT khởi tạo read state cho người có quyền xem. |
-| `PATCH /channels/{channel_id}/rooms/{room_id}` | `room_name`, `is_private`, `category_id`, `position`, `member_ids`, `room_mod_ids` | Creator/Moderator sửa tất cả trường trong bảng. Mod Phòng riêng chỉ sửa tên và danh sách Member thường của đúng Phòng. |
+| `PATCH /channels/{channel_id}/rooms/{room_id}` | `room_name`, `is_private`, `category_id`, `position`, `member_ids`, `room_mod_ids`, `denied_moderator_ids` | Chỉ Creator được thay danh sách `denied_moderator_ids` của Phòng riêng. Danh sách này ưu tiên hơn `member_ids`. Moderator sửa các trường còn lại của Phòng họ được phép quản lý. Mod Phòng riêng chỉ sửa tên và danh sách Member thường của đúng Phòng. |
 | `DELETE /channels/{channel_id}/rooms/{room_id}` | Path | Creator/Moderator xóa mềm và thu hồi quyền/media. |
 | `PUT /channels/{channel_id}/rooms/order` | Đề xuất `groups: [{category_id, room_ids}]`, gồm nhóm `category_id: null` | Creator/Moderator sắp xếp Phòng khả dụng. Mỗi Phòng xuất hiện một lần trong nhóm hiện tại. Dùng PATCH để đổi nhóm. |
 
@@ -74,7 +74,7 @@ Phòng công khai dành cho thành viên Kênh. Phòng riêng dành cho Creator,
 
 | Method và đường dẫn | Đầu vào | Kết quả và quyền |
 | --- | --- | --- |
-| `POST /rooms/{room_id}/messages` | `client_id`, `content`, `upload_ids?` | Quyền ghi TEXT/DM. Trả tin chính thức. Retry cùng khóa dedup trả tin đã tạo. |
+| `POST /rooms/{room_id}/messages` | `client_id`, `content`, `upload_ids?` | Quyền ghi TEXT/DM. Retry cùng khóa và dữ liệu gốc trả bản hiện tại hoặc `409 MESSAGE_DELETED`. Dùng lại khóa với dữ liệu khác trả `409 CLIENT_ID_REUSED`. |
 | `GET /rooms/{room_id}/messages` | `before_sequence?` hoặc `after_sequence?`, `limit?`, `through_sequence?` | Quyền đọc, gồm DM chỉ đọc. Trang tin, tổng hợp reaction, reaction của actor và mốc sequence. `through_sequence` là mốc chụp đề xuất cho các trang tiếp theo khi bắt kịp. |
 | `PATCH /rooms/{room_id}/messages/{message_id}` | `content` | Chỉ tác giả có quyền ghi. Giữ sequence, trả nội dung và `time_edited`. |
 | `DELETE /rooms/{room_id}/messages/{message_id}` | Path | Tác giả có quyền ghi hoặc người quản trị đúng phạm vi. Trong DM chỉ tác giả có quyền ghi. |

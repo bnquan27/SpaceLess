@@ -119,14 +119,22 @@ try {
     await button('Tạo tài khoản').click();
     await button('Tạo tài khoản').click();
     await textVisible('Vui lòng nhập họ và tên.');
-    await capture('validation');
     for (const [label, value] of Object.entries({ 'Tên đăng nhập': 'orbit_probe', 'Họ và tên': 'Orbit Probe',
-      Email: 'orbit@example.test', 'Số điện thoại': '+84900000000', 'Ngày sinh': '1990-01-01', 'Mật khẩu': 'synthetic-password' })) {
+      Email: 'invalid', 'Số điện thoại': '+84900000000', 'Ngày sinh': '9999-12-31', 'Mật khẩu': 'short' })) {
       await field(label).fill(value);
     }
     await button('Tạo tài khoản').click();
+    await textVisible('Vui lòng nhập email hợp lệ, ví dụ ban@example.com.');
+    await textVisible('Ngày sinh không thể ở tương lai.');
+    await page.getByRole('alert').filter({ hasText: 'Mật khẩu cần có từ 12 đến 128 ký tự.' }).waitFor();
+    assert(await field('Email').evaluate(input => input === document.activeElement), 'Email should take focus after invalid submit');
+    await capture('validation');
+    await field('Email').fill('orbit@example.test');
+    await field('Ngày sinh').fill('1990-01-01');
+    await field('Mật khẩu').fill('synthetic-password');
+    await button('Tạo tài khoản').click();
     await textVisible('Thông tin đã hợp lệ. Đây là bản xem thử, tài khoản chưa được tạo.');
-    result.steps.push('Registration validated six fields and displayed its preview status.');
+    result.steps.push('Sign-up checked required name, email format, birth date and password length, then displayed its preview status.');
   } else if (feature === 'recovery') {
     await button('Quên mật khẩu?').click();
     await field('Email').fill('invalid');

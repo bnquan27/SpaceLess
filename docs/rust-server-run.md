@@ -14,6 +14,15 @@ cargo run --manifest-path server/Cargo.toml --locked
 
 Máy chủ áp dụng migration khi khởi động. REST có tiền tố `http://127.0.0.1:8080/api/v1` và WebSocket dùng `ws://127.0.0.1:8080/api/v1/ws`. Dùng `SERVER_BIND` để đổi địa chỉ lắng nghe. API giữ một lease PostgreSQL để chặn replica thứ hai cùng sử dụng outbox. Đặt `SNOWFLAKE_WORKER_ID` từ `0` đến `1023` nếu cần cấu hình worker ID. Khi triển khai, đặt API và cổng tải sau TLS.
 
+## Nâng cấp cơ sở dữ liệu lên MVP v1.1
+
+1. Sao lưu cơ sở dữ liệu và thử nâng cấp trên bản sao.
+2. Dừng API và cổng tải đang dùng schema v1.
+3. Khởi động API bản mới với `DATABASE_URL` của cơ sở dữ liệu cần nâng cấp. API áp dụng các migration `0003` đến `0006` trước khi báo sẵn sàng.
+4. Khởi động lại cổng tải bằng cùng bản build sau khi API báo `SpaceLess server ready`.
+
+Giữ nguyên `APP_JWT_SECRET` để các JWT v1 còn hạn tiếp tục dùng được. Lần refresh tiếp theo cấp JWT mới và thu hồi JWT cũ. Hạn mức khôi phục bắt đầu lại sau khi nâng cấp. Với tin đã sửa hoặc đã xóa trong schema v1, migration giữ khóa gửi còn lưu và dùng trạng thái hiện có khi xử lý retry vì dữ liệu gửi gốc có thể đã mất.
+
 ## Bật nhà cung cấp
 
 | Phụ thuộc | Biến môi trường |
@@ -31,7 +40,7 @@ $env:FILE_GATEWAY_BIND = '127.0.0.1:8081'
 cargo run --manifest-path server/Cargo.toml --locked
 ```
 
-Client gửi Bearer khi dùng URL tải do API cấp. Cổng xác minh lại phiên và quyền ở mỗi GET hoặc Range request. Tệp tải lên đi trực tiếp vào kho đối tượng qua URL PUT ký trước.
+Client gửi Bearer khi dùng URL tải do API cấp. Cổng xác minh lại phiên và quyền ở mỗi GET hoặc Range request. URL PUT ký trước ghi vào khóa staging. API chốt tệp vào khóa riêng và xác minh bản chốt trước khi gắn. Tài khoản truy cập kho của API cần quyền đọc, ghi và xóa các object dưới tiền tố upload.
 
 ## Chạy kiểm thử
 

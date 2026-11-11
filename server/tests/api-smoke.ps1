@@ -18,6 +18,24 @@ function Request([string]$Method, [string]$Path, [string]$Token, $Body, [int]$St
     if ($response.Content) { ConvertFrom-Json -InputObject $response.Content -AsHashtable }
 }
 
+function Post-Concurrently([string]$Path, [string]$Token, $First, $Second, [string]$ExpectedStatuses) {
+    $client = [Net.Http.HttpClient]::new()
+    try {
+        if ($Token) {
+            $client.DefaultRequestHeaders.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $Token)
+        }
+        $pending = foreach ($body in @($First, $Second)) {
+            $json = ConvertTo-Json -InputObject $body -Compress
+            $client.PostAsync("$BaseUrl$Path", [Net.Http.StringContent]::new($json, [Text.Encoding]::UTF8, 'application/json'))
+        }
+        $responses = $pending | ForEach-Object { $_.GetAwaiter().GetResult() }
+        $statuses = ($responses | ForEach-Object { [int]$_.StatusCode } | Sort-Object) -join ','
+        Assert-True ($statuses -eq $ExpectedStatuses) "Concurrent POST $Path expected $ExpectedStatuses, got $statuses"
+        $created = $responses | Where-Object StatusCode -eq Created
+        $created.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json -AsHashtable
+    } finally { $client.Dispose() }
+}
+
 function New-Account([string]$Name) {
     $password = 'integration-only password'
     $profile = Request POST '/auth/register' '' @{
@@ -80,6 +98,14 @@ function Test-Query([string]$Sql) {
 }
 
 $suffix = [guid]::NewGuid().ToString('N').Substring(0, 12)
+$first = @{
+    username = "Race$suffix"; password = 'integration-only password'; full_name = 'Race'
+    date_of_birth = '1990-01-01'; email = "race1$suffix@example.test"; phone = '+84900000000'
+}
+$second = $first.Clone()
+$second.username = "race$suffix"
+$second.email = "race2$suffix@example.test"
+Post-Concurrently '/auth/register' '' $first $second '201,409' | Out-Null
 $alice = New-Account "smokea$suffix"
 $bob = New-Account "smokeb$suffix"
 $charlie = New-Account "smokec$suffix"
@@ -100,7 +126,8 @@ try {
 
     $created = Request POST '/channels' $alice.token @{ channel_name = "Smoke $suffix" } 201
     $channel = $created.channel.channel_id
-    $invitation = Request POST "/channels/$channel/invitations" $alice.token @{ target_user_id = $bob.id } 201
+    $inviteBody = @{ target_user_id = $bob.id }
+    $invitation = Post-Concurrently "/channels/$channel/invitations" $alice.token $inviteBody $inviteBody '201,409'
     Request PATCH "/invitations/$($invitation.invitation_id)" $bob.token @{ decision = 'ACCEPT' } | Out-Null
     $category = Request POST "/channels/$channel/categories" $alice.token @{ category_name = 'Test group' } 201
     $room = Request POST "/channels/$channel/rooms" $alice.token @{
@@ -114,18 +141,7 @@ try {
     $messagePath = "/rooms/$roomId/messages"
     $messageBody = @{ client_id = 'integration-test'; content = 'One message' }
     $beforeSend = Request GET $messagePath $alice.token $null
-    $client = [Net.Http.HttpClient]::new()
-    try {
-        $client.DefaultRequestHeaders.Authorization = [Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', $alice.token)
-        $json = ConvertTo-Json -InputObject $messageBody -Compress
-        $left = $client.PostAsync("$BaseUrl$messagePath", [Net.Http.StringContent]::new($json, [Text.Encoding]::UTF8, 'application/json'))
-        $right = $client.PostAsync("$BaseUrl$messagePath", [Net.Http.StringContent]::new($json, [Text.Encoding]::UTF8, 'application/json'))
-        $responses = @($left.GetAwaiter().GetResult(), $right.GetAwaiter().GetResult())
-        $statuses = @($responses | ForEach-Object { [int]$_.StatusCode } | Sort-Object)
-        Assert-True (($statuses -join ',') -eq '200,201') "Concurrent sends should create once, got $statuses"
-        $result = $responses | Where-Object StatusCode -eq Created
-        $message = $result.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json -AsHashtable
-    } finally { $client.Dispose() }
+    $message = Post-Concurrently $messagePath $alice.token $messageBody $messageBody '200,201'
     $again = Request POST $messagePath $alice.token $messageBody
     Assert-True ($again.message_id -eq $message.message_id -and $again.room_sequence -eq '1') 'Retry must preserve message identity and sequence'
     $afterSend = Request GET $messagePath $alice.token $null
@@ -144,14 +160,25 @@ try {
     $read = Request PUT "/rooms/$roomId/read-state" $bob.token @{ last_read_sequence = '0' }
     Assert-True ($read.last_read_sequence -eq '1') 'Read state must not go backwards'
     Request PATCH "$messagePath/$messageId" $bob.token @{ content = 'not the author' } 403 | Out-Null
+    Request PATCH "$messagePath/$messageId" $alice.token @{ content = 'Edited message' } | Out-Null
+    $editedRetry = Request POST $messagePath $alice.token $messageBody
+    Assert-True ($editedRetry.message_id -eq $messageId -and $editedRetry.content -eq 'Edited message') 'Retry must match the original request after an edit'
+    $conflict = Request POST $messagePath $alice.token @{ client_id = $messageBody.client_id; content = 'Edited message' } 409
+    Assert-True ($conflict.error.code -eq 'CLIENT_ID_REUSED') 'The edited text must not replace the original receipt payload'
     Request DELETE "$messagePath/$messageId" $alice.token $null 204 | Out-Null
-    Request POST $messagePath $alice.token $messageBody 409 | Out-Null
+    $deleted = Request POST $messagePath $alice.token $messageBody 409
+    Assert-True ($deleted.error.code -eq 'MESSAGE_DELETED') 'A deleted message must keep its receipt'
+    $conflict = Request POST $messagePath $alice.token @{ client_id = $messageBody.client_id; content = 'Different message' } 409
+    Assert-True ($conflict.error.code -eq 'CLIENT_ID_REUSED') 'A deleted receipt must still reject a different payload'
     $gap = Request GET "$($messagePath)?after_sequence=0" $bob.token $null
     Assert-True ($gap.items.Count -eq 0 -and $gap.next_cursor -eq '1') 'Cursor must advance past a deleted sequence'
 
     if ($WithFiles) {
         $upload = Put-Attachment $roomId $alice.token -CheckReplay
-        $attached = Request POST $messagePath $alice.token @{ client_id = 'attachment'; content = ''; upload_ids = @($upload.upload_id) } 201
+        $attachmentBody = @{ client_id = 'attachment'; content = ''; upload_ids = @($upload.upload_id) }
+        $attached = Request POST $messagePath $alice.token $attachmentBody 201
+        $attachedRetry = Request POST $messagePath $alice.token $attachmentBody
+        Assert-True ($attachedRetry.message_id -eq $attached.message_id) 'A receipt must allow retry after consuming the staged upload'
         $link = Request GET "/attachments/$($attached.attachments[0].attachment_id)/url" $bob.token $null
         $authHeaders = @{ Authorization = "Bearer $($bob.token)" }
         $download = Invoke-WebRequest -Uri $link.url -Headers $authHeaders -SkipHttpErrorCheck
@@ -169,11 +196,37 @@ try {
             $stagedId = [long]$staged.upload_id
             $deletedId = [long]$toDelete.upload_id
             $keptId = [long]$upload.upload_id
+            Assert-True ((Test-Query "SELECT staging_key <> storage_key FROM file_uploads WHERE id=$keptId") -eq 't') 'The staged and final objects must have different keys'
             Test-Query "UPDATE file_uploads SET expires_at=now()-interval '1 second',put_expires_at=now()-interval '1 second' WHERE id IN ($stagedId,$deletedId,$keptId)" | Out-Null
         }
     }
 
-    Request PATCH "/channels/$channel/rooms/$roomId" $alice.token @{ member_ids = @() } | Out-Null
+    $roomPatch = "/channels/$channel/rooms/$roomId"
+    $bobRole = "/channels/$channel/members/$($bob.id)/role"
+    Request PATCH $bobRole $alice.token @{ role = 'MODERATOR' } | Out-Null
+    Request PATCH $roomPatch $bob.token @{ denied_moderator_ids = @($bob.id) } 403 | Out-Null
+    Request PATCH $roomPatch $alice.token @{ denied_moderator_ids = @($bob.id) } | Out-Null
+    Wait-Event $socket ROOM_DELETE { param($data) $data.room_id -eq $roomId } | Out-Null
+    Request GET $messagePath $bob.token $null 404 | Out-Null
+    $deniedSnapshot = Request GET '/bootstrap' $bob.token $null
+    Assert-True (!($deniedSnapshot.rooms | Where-Object room_id -eq $roomId)) 'A denied Moderator must not see the room in bootstrap'
+    $visibleRoom = Request POST "/channels/$channel/rooms" $alice.token @{
+        room_name = 'Visible room'; type = 'TEXT'; is_private = $false; category_id = $category.category_id
+    } 201
+    $visibleSnapshot = Request GET '/bootstrap' $bob.token $null
+    $visiblePosition = ($visibleSnapshot.rooms | Where-Object room_id -eq $visibleRoom.room_id).position
+    Assert-True ($visiblePosition -eq 1) 'Bootstrap must keep the visible room at position one'
+    $inserted = Request POST "/channels/$channel/rooms" $bob.token @{
+        room_name = 'Inserted room'; type = 'TEXT'; is_private = $false; category_id = $category.category_id; position = $visiblePosition
+    } 201
+    Assert-True ($inserted.position -eq $visiblePosition) 'Create room must accept a position returned by bootstrap'
+    $creatorSnapshot = Request GET '/bootstrap' $alice.token $null
+    Assert-True (($creatorSnapshot.rooms | Where-Object room_id -eq $roomId).position -eq 0) 'Room insertion must leave the hidden position unchanged'
+    Request PATCH $bobRole $alice.token @{ role = 'MEMBER' } | Out-Null
+    Wait-Event $socket ROOM_CREATE { param($data) $data.room_id -eq $roomId } | Out-Null
+    $memberSnapshot = Request GET '/bootstrap' $bob.token $null
+    Assert-True (($memberSnapshot.rooms | Where-Object room_id -eq $roomId).last_read_sequence -eq '1') 'A denial and its removal must preserve the read mark'
+    Request PATCH $roomPatch $alice.token @{ member_ids = @() } | Out-Null
     Wait-Event $socket ROOM_DELETE { param($data) $data.room_id -eq $roomId } | Out-Null
     Request GET $messagePath $bob.token $null 404 | Out-Null
     if ($WithFiles) {
@@ -182,7 +235,7 @@ try {
         if ($Psql) {
             $until = [DateTime]::UtcNow.AddSeconds(70)
             do {
-                $remaining = Test-Query "SELECT count(*) FROM file_uploads WHERE id IN ($stagedId,$deletedId)"
+                $remaining = Test-Query "SELECT count(*) FROM file_uploads WHERE id IN ($stagedId,$deletedId) OR (id=$keptId AND staging_key IS NOT NULL)"
                 if ($remaining -eq '0') { break }
                 Start-Sleep -Seconds 1
             } while ([DateTime]::UtcNow -lt $until)
@@ -209,7 +262,10 @@ try {
     Request DELETE "/channels/$channel" $alice.token $null 403 | Out-Null
     Request DELETE "/channels/$channel/members/me" $alice.token $null 204 | Out-Null
     $refreshed = Request POST '/auth/refresh' $bob.token $null
-    Request POST '/auth/logout' $bob.token $null 204 | Out-Null
+    Request GET '/users/me' $bob.token $null 401 | Out-Null
+    Request POST '/auth/refresh' $bob.token $null 401 | Out-Null
+    Request GET '/users/me' $refreshed.access_token $null | Out-Null
+    Request POST '/auth/logout' $refreshed.access_token $null 204 | Out-Null
     Request GET '/users/me' $refreshed.access_token $null 401 | Out-Null
     if ($Psql) {
         if (!$env:DATABASE_URL) { throw 'DATABASE_URL must point to the API test database when using -Psql' }

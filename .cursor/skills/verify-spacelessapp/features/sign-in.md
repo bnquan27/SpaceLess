@@ -16,4 +16,4 @@ Run `node .cursor/skills/verify-spacelessapp/scripts/verify-ui.mjs desktop sign-
 
 ## Gotchas
 
-Use `Tên đăng nhập`, which is distinct from the recovery `Email` field. Treat the preview notice as proof of form behavior. Test real credentials with [the API journey](server-api.md).
+Use `Tên đăng nhập`, which is distinct from the recovery `Email` field. Treat the preview notice as proof of form behavior. Use synthetic test accounts for [the API journey](server-api.md).

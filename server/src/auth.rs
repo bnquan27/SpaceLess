@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, NaiveDate, Utc};
+use hmac::{Hmac, Mac};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use lettre::{
     Address, AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::Mailbox,
@@ -119,6 +120,7 @@ impl MailConfig {
 #[derive(Serialize, Deserialize)]
 struct Claims {
     sub: Id,
+    sid: Option<Uuid>,
     jti: Uuid,
     exp: i64,
     auth_version: i64,
@@ -147,6 +149,7 @@ impl FromRequestParts<AppState> for Actor {
         .claims;
         let actor = Actor {
             user_id: claims.sub,
+            sid: claims.sid.unwrap_or(claims.jti),
             jti: claims.jti,
             exp: claims.exp,
             auth_version: claims.auth_version,
@@ -157,23 +160,7 @@ impl FromRequestParts<AppState> for Actor {
 }
 
 pub async fn session_valid(state: &AppState, actor: &Actor) -> Result<()> {
-    let expires = DateTime::from_timestamp(actor.exp, 0).ok_or_else(ApiError::unauthorized)?;
-    let valid: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM auth_sessions s JOIN users u ON u.id = s.user_id \
-         WHERE s.jti = $1 AND u.id = $2 AND u.auth_version = $3 AND u.is_available \
-           AND s.revoked_at IS NULL AND s.max_expires_at >= $4 AND $4 > now())",
-    )
-    .bind(actor.jti)
-    .bind(actor.user_id.0)
-    .bind(actor.auth_version)
-    .bind(expires)
-    .fetch_one(&state.pool)
-    .await?;
-    if valid {
-        Ok(())
-    } else {
-        Err(ApiError::unauthorized())
-    }
+    db::validate_session(&state.pool, actor).await
 }
 
 fn new_expiry() -> Result<DateTime<Utc>> {
@@ -184,7 +171,7 @@ fn new_expiry() -> Result<DateTime<Utc>> {
 fn token_response(
     state: &AppState,
     user_id: Id,
-    jti: Uuid,
+    sid: Uuid,
     auth_version: i64,
     expires_at: DateTime<Utc>,
 ) -> Result<axum::Json<Value>> {
@@ -192,7 +179,8 @@ fn token_response(
         &Header::new(Algorithm::HS256),
         &Claims {
             sub: user_id,
-            jti,
+            sid: Some(sid),
+            jti: Uuid::new_v4(),
             exp: expires_at.timestamp(),
             auth_version,
         },
@@ -330,21 +318,26 @@ async fn register(
     let password_hash = hash_password(input.password).await?;
     let id = state.id().await?;
     let mut tx = state.pool.begin().await?;
-    sqlx::query("INSERT INTO users (id, username, email, password_hash) VALUES ($1, $2, $3, $4)")
-        .bind(id.0)
-        .bind(username)
-        .bind(email)
-        .bind(password_hash)
-        .execute(&mut *tx)
-        .await
-        .map_err(identity_write_error)?;
-    sqlx::query("INSERT INTO user_details (user_id, full_name, date_of_birth, phone) VALUES ($1, $2, $3, $4)")
-        .bind(id.0)
-        .bind(full_name)
-        .bind(date_of_birth)
-        .bind(phone)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "INSERT INTO users (id, username, full_name, password_hash) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(id.0)
+    .bind(username)
+    .bind(full_name)
+    .bind(password_hash)
+    .execute(&mut *tx)
+    .await
+    .map_err(identity_write_error)?;
+    sqlx::query(
+        "INSERT INTO user_details (user_id, email, date_of_birth, phone) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(id.0)
+    .bind(email)
+    .bind(date_of_birth)
+    .bind(phone)
+    .execute(&mut *tx)
+    .await
+    .map_err(identity_write_error)?;
     let body = profile(&mut tx, id).await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, axum::Json(body)))
@@ -394,15 +387,18 @@ async fn login(
             "Tài khoản đã bị khóa.",
         ));
     }
-    let jti = Uuid::new_v4();
+    let sid = Uuid::new_v4();
     let expires_at = new_expiry()?;
-    sqlx::query("INSERT INTO auth_sessions (jti, user_id, max_expires_at) VALUES ($1, $2, $3)")
-        .bind(jti)
+    sqlx::query(
+        "INSERT INTO auth_sessions (session_id, user_id, auth_version, expires_at) VALUES ($1, $2, $3, $4)",
+    )
+        .bind(sid)
         .bind(user_id)
+        .bind(auth_version)
         .bind(expires_at)
         .execute(&mut *tx)
         .await?;
-    let response = token_response(&state, Id(user_id), jti, auth_version, expires_at)?;
+    let response = token_response(&state, Id(user_id), sid, auth_version, expires_at)?;
     tx.commit().await?;
     Ok(response)
 }
@@ -423,48 +419,65 @@ async fn lock_mutable_session(conn: &mut PgConnection, actor: &Actor) -> Result<
         .await?
         .ok_or_else(ApiError::unauthorized)?;
     sqlx::query_scalar::<_, Uuid>(
-        "SELECT jti FROM auth_sessions WHERE jti = $1 AND user_id = $2 FOR UPDATE",
+        "SELECT session_id FROM auth_sessions WHERE session_id = $1 AND user_id = $2 FOR UPDATE",
     )
-    .bind(actor.jti)
+    .bind(actor.sid)
     .bind(actor.user_id.0)
     .fetch_optional(&mut *conn)
     .await?
     .ok_or_else(ApiError::unauthorized)?;
-    db::lock_session(conn, actor).await
+    db::validate_session(conn, actor).await
+}
+
+async fn revoke_token(conn: &mut PgConnection, actor: &Actor) -> Result<()> {
+    let expiry = DateTime::from_timestamp(actor.exp, 0).ok_or_else(ApiError::unauthorized)?;
+    // Legacy refreshes reused the session ID as the token ID across different expiry times.
+    sqlx::query(
+        "INSERT INTO revoked_tokens (token_jti, user_id, expires_at)
+         SELECT $1, user_id, CASE WHEN session_id = $1 THEN expires_at ELSE $3 END
+         FROM auth_sessions WHERE session_id = $2",
+    )
+    .bind(actor.jti)
+    .bind(actor.sid)
+    .bind(expiry)
+    .execute(conn)
+    .await?;
+    Ok(())
 }
 
 async fn refresh(State(state): State<AppState>, actor: Actor) -> Result<axum::Json<Value>> {
     let mut tx = state.pool.begin().await?;
     lock_mutable_session(&mut tx, &actor).await?;
     let expires_at = new_expiry()?;
-    sqlx::query(
-        "UPDATE auth_sessions SET max_expires_at = GREATEST(max_expires_at, $2) WHERE jti = $1",
-    )
-    .bind(actor.jti)
-    .bind(expires_at)
-    .execute(&mut *tx)
-    .await?;
+    revoke_token(&mut tx, &actor).await?;
+    sqlx::query("UPDATE auth_sessions SET expires_at = $2 WHERE session_id = $1")
+        .bind(actor.sid)
+        .bind(expires_at)
+        .execute(&mut *tx)
+        .await?;
     let response = token_response(
         &state,
         actor.user_id,
-        actor.jti,
+        actor.sid,
         actor.auth_version,
         expires_at,
     )?;
     tx.commit().await?;
+    sync::disconnect_token(&state, actor.user_id, actor.jti).await;
     Ok(response)
 }
 
 async fn logout(State(state): State<AppState>, actor: Actor) -> Result<StatusCode> {
     let mut tx = state.pool.begin().await?;
     lock_mutable_session(&mut tx, &actor).await?;
-    sqlx::query("UPDATE auth_sessions SET revoked_at = now() WHERE jti = $1")
-        .bind(actor.jti)
+    revoke_token(&mut tx, &actor).await?;
+    sqlx::query("UPDATE auth_sessions SET revoked_at = now() WHERE session_id = $1")
+        .bind(actor.sid)
         .execute(&mut *tx)
         .await?;
     voice::revoke_invalid(&mut tx).await?;
     tx.commit().await?;
-    sync::disconnect(&state, actor.user_id, Some(actor.jti)).await;
+    sync::disconnect(&state, actor.user_id, Some(actor.sid)).await;
     voice::flush_after_commit(&state).await;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -475,39 +488,56 @@ struct ForgotPassword {
     email: String,
 }
 
-async fn check_forgot_limit(conn: &mut PgConnection, email: &str, peer: SocketAddr) -> Result<()> {
+fn recovery_key(secret: &str, kind: &str, value: &str) -> Result<String> {
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(secret.as_bytes()).map_err(|_| ApiError::unavailable())?;
+    mac.update(b"spaceless-recovery-quota\0");
+    mac.update(kind.as_bytes());
+    mac.update(b"\0");
+    mac.update(value.as_bytes());
+    Ok(hex::encode(mac.finalize().into_bytes()))
+}
+
+async fn check_forgot_limit(state: &AppState, email: &str, peer: SocketAddr) -> Result<()> {
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|_| ApiError::unavailable())?;
     let (normalized_email, now): (String, i64) = sqlx::query_as(
         "SELECT identity_key($1), floor(extract(epoch FROM clock_timestamp()))::bigint",
     )
     .bind(email)
-    .fetch_one(&mut *conn)
+    .fetch_one(&mut *tx)
     .await
     .map_err(|_| ApiError::unavailable())?;
-    let email_key = format!(
-        "email:{}",
-        hex::encode(Sha256::digest(normalized_email.as_bytes()))
-    );
-    let ip_key = format!("ip:{}", peer.ip().to_canonical());
-    let counts = sqlx::query_as::<_, (String, i32)>(
-        "INSERT INTO forgot_limits (key, bucket, count) VALUES ($1, $3, 1), ($2, $3, 1) \
-         ON CONFLICT (key, bucket) DO UPDATE SET count = least(forgot_limits.count + 1, 21) \
-         RETURNING key, count",
+    let email_key = recovery_key(&state.jwt_secret, "EMAIL", &normalized_email)?;
+    let ip_key = recovery_key(
+        &state.jwt_secret,
+        "IP",
+        &peer.ip().to_canonical().to_string(),
+    )?;
+    let window_start = DateTime::from_timestamp(now - now.rem_euclid(FORGOT_WINDOW), 0)
+        .ok_or_else(ApiError::unavailable)?;
+    let result = sqlx::query(
+        "INSERT INTO recovery_rate_buckets AS b (key_kind, key_hash, window_start, admitted_count)
+         VALUES ('EMAIL', $1, $3, 1), ('IP', $2, $3, 1)
+         ON CONFLICT (key_kind, key_hash, window_start) DO UPDATE SET admitted_count = b.admitted_count + 1
+         WHERE b.admitted_count < CASE b.key_kind WHEN 'EMAIL' THEN 3 ELSE 20 END",
     )
-    .bind(&email_key)
+    .bind(email_key)
     .bind(ip_key)
-    .bind(now / FORGOT_WINDOW)
-    .fetch_all(conn)
+    .bind(window_start)
+    .execute(&mut *tx)
     .await
     .map_err(|_| ApiError::unavailable())?;
-    if counts
-        .iter()
-        .any(|(key, count)| *count > if *key == email_key { 3 } else { 20 })
-    {
+    if result.rows_affected() != 2 {
+        tx.rollback().await.map_err(|_| ApiError::unavailable())?;
         return Err(ApiError::rate_limited(
-            (FORGOT_WINDOW - now % FORGOT_WINDOW) as u64,
+            (FORGOT_WINDOW - now.rem_euclid(FORGOT_WINDOW)) as u64,
         ));
     }
-    Ok(())
+    tx.commit().await.map_err(|_| ApiError::unavailable())
 }
 
 async fn forgot_password(
@@ -516,31 +546,34 @@ async fn forgot_password(
     Body(input): Body<ForgotPassword>,
 ) -> Result<axum::Json<Value>> {
     let (email, address) = email(&input.email)?;
-    let mut conn = state
-        .pool
-        .acquire()
-        .await
-        .map_err(|_| ApiError::unavailable())?;
-    check_forgot_limit(&mut conn, &email, peer).await?;
-    drop(conn);
+    check_forgot_limit(&state, &email, peer).await?;
     let mail = state.mail.clone().ok_or_else(ApiError::unavailable)?;
     let mut tx = state.pool.begin().await?;
     let user = sqlx::query_as::<_, (i64, String)>(
-        "SELECT id, username FROM users WHERE identity_key(email) = identity_key($1) AND is_available FOR UPDATE",
+        "SELECT u.id, u.username FROM users u JOIN user_details d ON d.user_id = u.id
+         WHERE identity_key(d.email) = identity_key($1) AND u.is_available FOR UPDATE OF u",
     )
-    .bind(email)
+    .bind(&email)
     .fetch_optional(&mut *tx)
     .await?;
     if let Some((user_id, username)) = user {
         let mut token = [0; 32];
         OsRng.fill_bytes(&mut token);
-        sqlx::query("INSERT INTO password_reset_tokens (token_hash, user_id, expires_at) VALUES ($1, $2, now() + interval '15 minutes')")
-            .bind(Sha256::digest(token).as_slice())
-            .bind(user_id)
-            .execute(&mut *tx)
-            .await?;
+        // The email could have changed while the lookup waited for the account lock.
+        let inserted = sqlx::query(
+            "INSERT INTO password_reset_tokens (token_hash, user_id, expires_at)
+             SELECT $1, user_id, clock_timestamp() + interval '15 minutes' FROM user_details
+             WHERE user_id = $2 AND identity_key(email) = identity_key($3)",
+        )
+        .bind(Sha256::digest(token).as_slice())
+        .bind(user_id)
+        .bind(email)
+        .execute(&mut *tx)
+        .await?;
         tx.commit().await?;
-        tokio::spawn(mail.send_reset(address, username, token));
+        if inserted.rows_affected() == 1 {
+            tokio::spawn(mail.send_reset(address, username, token));
+        }
     } else {
         tx.commit().await?;
     }
@@ -565,7 +598,7 @@ async fn reset_password(
     let hash = Sha256::digest(token);
     let user = sqlx::query_scalar::<_, i64>(
         "SELECT t.user_id FROM password_reset_tokens t JOIN users u ON u.id = t.user_id \
-         WHERE t.token_hash = $1 AND t.used_at IS NULL AND t.expires_at > now() AND u.is_available",
+         WHERE t.token_hash = $1 AND NOT t.is_used AND t.expires_at > now() AND u.is_available",
     )
     .bind(hash.as_slice())
     .fetch_optional(&state.pool)
@@ -579,7 +612,7 @@ async fn reset_password(
         "UPDATE users u SET password_hash = $2, auth_version = auth_version + 1 \
          WHERE id = $1 AND is_available AND EXISTS ( \
              SELECT 1 FROM password_reset_tokens t WHERE t.token_hash = $3 AND t.user_id = u.id \
-             AND t.used_at IS NULL AND t.expires_at > clock_timestamp())",
+             AND NOT t.is_used AND t.expires_at > clock_timestamp() FOR UPDATE)",
     )
     .bind(user.0)
     .bind(password_hash)
@@ -590,21 +623,21 @@ async fn reset_password(
         return Err(invalid_reset_token());
     }
     sqlx::query(
-        "UPDATE password_reset_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL",
+        "UPDATE password_reset_tokens SET is_used = true WHERE user_id = $1 AND NOT is_used",
     )
     .bind(user.0)
     .execute(&mut *tx)
     .await?;
     let sessions = sqlx::query_scalar::<_, Uuid>(
-        "UPDATE auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL RETURNING jti",
+        "UPDATE auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL RETURNING session_id",
     )
     .bind(user.0)
     .fetch_all(&mut *tx)
     .await?;
     voice::revoke_invalid(&mut tx).await?;
     tx.commit().await?;
-    for jti in sessions {
-        sync::disconnect(&state, user, Some(jti)).await;
+    for sid in sessions {
+        sync::disconnect(&state, user, Some(sid)).await;
     }
     voice::flush_after_commit(&state).await;
     Ok(StatusCode::NO_CONTENT)
@@ -613,7 +646,7 @@ async fn reset_password(
 pub(crate) async fn profile(conn: &mut PgConnection, user: Id) -> Result<Value> {
     let (username, email, full_name, date_of_birth, phone, address, avatar_upload_id) =
         sqlx::query_as::<_, (String, String, String, NaiveDate, String, Option<String>, Option<i64>)>(
-            "SELECT u.username, u.email, d.full_name, d.date_of_birth, d.phone, d.address, d.avatar_upload_id \
+            "SELECT u.username, d.email, u.full_name, d.date_of_birth, d.phone, d.address, d.avatar_upload_id \
              FROM users u JOIN user_details d ON d.user_id = u.id WHERE u.id = $1 AND u.is_available",
         )
         .bind(user.0)
@@ -684,15 +717,23 @@ async fn update_profile(
     let mut tx = state.pool.begin().await?;
     lock_account(&mut tx, actor.user_id).await?;
     db::lock_session(&mut tx, &actor).await?;
-    if let Some(email) = email {
-        let update = sqlx::query("UPDATE users SET email = $2 WHERE id = $1 AND email <> $2")
+    if let Some(full_name) = full_name {
+        sqlx::query("UPDATE users SET full_name = $2 WHERE id = $1")
             .bind(actor.user_id.0)
-            .bind(email)
+            .bind(full_name)
             .execute(&mut *tx)
-            .await
-            .map_err(identity_write_error)?;
+            .await?;
+    }
+    if let Some(email) = email {
+        let update =
+            sqlx::query("UPDATE user_details SET email = $2 WHERE user_id = $1 AND email <> $2")
+                .bind(actor.user_id.0)
+                .bind(email)
+                .execute(&mut *tx)
+                .await
+                .map_err(identity_write_error)?;
         if update.rows_affected() > 0 {
-            sqlx::query("UPDATE password_reset_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL")
+            sqlx::query("UPDATE password_reset_tokens SET is_used = true WHERE user_id = $1 AND NOT is_used")
                 .bind(actor.user_id.0)
                 .execute(&mut *tx)
                 .await?;
@@ -715,12 +756,11 @@ async fn update_profile(
         }
     }
     sqlx::query(
-        "UPDATE user_details SET full_name = coalesce($2, full_name), date_of_birth = coalesce($3, date_of_birth), \
-         phone = coalesce($4, phone), address = CASE WHEN $5 THEN $6 ELSE address END, \
-         avatar_upload_id = CASE WHEN $7 THEN $8 ELSE avatar_upload_id END WHERE user_id = $1",
+        "UPDATE user_details SET date_of_birth = coalesce($2, date_of_birth), \
+         phone = coalesce($3, phone), address = CASE WHEN $4 THEN $5 ELSE address END, \
+         avatar_upload_id = CASE WHEN $6 THEN $7 ELSE avatar_upload_id END WHERE user_id = $1",
     )
     .bind(actor.user_id.0)
-    .bind(full_name)
     .bind(date_of_birth)
     .bind(phone)
     .bind(input.address.is_some())
