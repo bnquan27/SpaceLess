@@ -23,7 +23,13 @@ Add-Content $log "Exit code $code"
 if ($code -ne 0) { throw "API smoke failed. Evidence in $log" }
 ```
 
-Expect the pass line for auth, channel permissions, message retry, history and WebSocket delivery. `-WithFiles` additionally drives the S3 and gateway routes. `-Psql psql` checks reset and, with `-WithFiles`, file cleanup. See [the server runbook](../../../../docs/rust-server-run.md) for provider setup and the local voice fixture.
+Expect the pass line for auth, channel permissions, message retry, history and WebSocket delivery. `-WithFiles` additionally drives the S3 and gateway routes. For a loopback gateway on a custom port, set `FILE_GATEWAY_BIND` in the gateway process and point `FILE_GATEWAY_PUBLIC_URL` at that address in the API process. `-Psql psql` checks reset and, with `-WithFiles`, file cleanup. See [the server runbook](../../../../docs/rust-server-run.md) for provider setup.
+
+For voice session generation and revocation, build the server, set `DATABASE_URL` to a test database and run the local voice fixture. It starts its own API on loopback. Stop the previous API before reusing its database, or give the voice fixture a separate database.
+
+```powershell
+node server/tests/voice-smoke.mjs server/target/debug/spaceless-server.exe
+```
 
 ## Gotchas
 
