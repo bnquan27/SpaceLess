@@ -1,18 +1,50 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import '@fontsource/be-vietnam-pro/400.css'
-import '@fontsource/be-vietnam-pro/500.css'
-import '@fontsource/be-vietnam-pro/600.css'
-import '@fontsource/be-vietnam-pro/700.css'
-import { SpaceLogin } from '@/components/ui/space-login'
-import './index.css'
+import React, { useState } from "react";
+import ReactDOM from "react-dom/client";
+import "@fontsource/be-vietnam-pro/400.css";
+import "@fontsource/be-vietnam-pro/500.css";
+import "@fontsource/be-vietnam-pro/600.css";
+import "@fontsource/be-vietnam-pro/700.css";
+import { SpaceLogin } from "@/components/ui/space-login";
+import { SpaceWorkspace } from "@/components/ui/space-workspace";
+import "./index.css";
 
-const root = ReactDOM.createRoot(document.getElementById('root')!)
+function AppRoot() {
+  const [loggedInUser, setLoggedInUser] = useState<string | null>("Nguyễn Minh");
+  if (loggedInUser) {
+    return (
+      <SpaceWorkspace
+        currentUser={loggedInUser}
+        onLogout={() => setLoggedInUser(null)}
+      />
+    );
+  }
 
-if (window.location.pathname === '/design') {
-  import('@/components/sign-in-explorer').then(({ SignInExplorer }) => {
-    root.render(<React.StrictMode><SignInExplorer /></React.StrictMode>)
-  })
+  return (
+    <main className="app-login">
+      <SpaceLogin
+        direction="orbit"
+        onSubmit={({ username }) => {
+          setLoggedInUser(username);
+        }}
+      />
+    </main>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root")!);
+
+if (window.location.pathname === "/design") {
+  import("@/components/sign-in-explorer").then(({ SignInExplorer }) => {
+    root.render(
+      <React.StrictMode>
+        <SignInExplorer />
+      </React.StrictMode>,
+    );
+  });
 } else {
-  root.render(<React.StrictMode><main className="app-login"><SpaceLogin direction="orbit" /></main></React.StrictMode>)
+  root.render(
+    <React.StrictMode>
+      <AppRoot />
+    </React.StrictMode>,
+  );
 }

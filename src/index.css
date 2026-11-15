@@ -1,21 +1,33 @@
 @import "tailwindcss";
 
 @theme { --font-sans: 'Be Vietnam Pro', sans-serif; }
+@layer base {
+  button, input { font: inherit; }
+  button { color: inherit; }
+}
 :root { font-family: var(--font-sans); color: #e9e9ec; background: #111215; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 360px; }
 button, input, a { -webkit-tap-highlight-color: transparent; }
-button, input { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: wait; opacity: .65; }
 button, a, input { outline-offset: 4px; }
 :focus-visible { outline: 2px solid #c0adfc; }
 ::selection { background: #b9a3f9; color: #171225; }
 * { scrollbar-width: thin; scrollbar-color: #48464e #161619; }
-button { color: inherit; }
 button, a { transition: background-color 180ms, color 180ms, border-color 180ms; }
 a { color: inherit; text-decoration: none; }
 button svg { flex-shrink: 0; }
+
+.space-workspace :where(button, input, textarea, select):focus-visible {
+  outline: 2px solid #c0adfc;
+  outline-offset: 2px;
+}
+.workspace-action { min-height: 2rem; font-size: .875rem; line-height: 1.25rem; }
+.workspace-icon-button { min-width: 2rem; min-height: 2rem; display: inline-grid; place-items: center; flex-shrink: 0; }
+@media (max-width: 639px) {
+  .workspace-action { min-height: 2.75rem; }
+}
 .studio-header { height: 72px; display: flex; align-items: center; padding: 0 30px; gap: 24px; border-bottom: 1px solid #29292d; }
 .studio-brand { display: flex; align-items: center; gap: 10px; }
 .studio-brand > div { width: 30px; height: 30px; color: #d9c9ff; }
@@ -353,15 +365,24 @@ button svg { flex-shrink: 0; }
 .app-login { container-type: inline-size; }
 .app-login .space-login { min-height: max(700px, 100svh); }
 .app-login .login-form-inner { max-width: 360px; }
-.app-login .field > label { font-size: 13px; }
+.app-login .field > label { font-size: 14px; }
 .app-login .field input { height: 48px; font-size: 14px; }
 .app-login .password-toggle { height: 48px; width: 48px; }
-.app-login .form-intro { font-size: 13px; }
-.app-login .form-options, .app-login .form-options > button { font-size: 11px; }
+.app-login .form-intro { font-size: 14px; }
+.app-login .form-options, .app-login .form-options > button { font-size: 14px; }
+.app-login .form-options { flex-wrap: wrap; row-gap: 0; }
+.app-login .form-options > label, .app-login .form-options > button,
+.app-login .signup-prompt > button, .app-login .back-link, .app-login .motion-toggle { min-height: 44px; }
+.app-login .motion-toggle, .app-login .back-link { font-size: 14px; padding-inline: 8px; }
+.app-login .back-link { padding-inline: 0; margin-bottom: 16px; }
+.app-login .form-options input { width: 16px; height: 16px; }
 .app-login .login-submit { min-height: 48px; font-size: 14px; }
-.app-login .signup-prompt, .app-login .signup-prompt > button { font-size: 12px; }
-.app-login .form-bottom-copy { font-size: 10px; }
-.app-login .login-footer { font-size: 9px; }
+.app-login .signup-prompt, .app-login .signup-prompt > button { font-size: 14px; }
+.app-login .signup-prompt { margin-top: 8px; }
+.app-login .form-bottom { margin-top: 16px; }
+.app-login .form-bottom-copy, .app-login .login-footer { font-size: 12px; }
+.app-login .field-error, .app-login .form-error, .app-login .form-notice,
+.app-login .signup-hint { font-size: 13px; }
 .is-register .login-form-inner { max-width: 440px; }
 .signup-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
 .signup-fields .field { margin-bottom: 14px; }
