@@ -1,0 +1,19 @@
+2026-11-15 21:58:48.101 +07 [12236] LOG:  starting PostgreSQL 17.11 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit
+2026-11-15 21:58:48.102 +07 [12236] LOG:  listening on IPv4 address "127.0.0.1", port 58451
+2026-11-15 21:58:48.264 +07 [25424] LOG:  database system was shut down at 2026-11-15 21:57:09 +07
+2026-11-15 21:58:48.300 +07 [12236] LOG:  database system is ready to accept connections
+2026-11-15 21:59:30.299 +07 [22856] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+2026-11-15 21:59:30.300 +07 [23624] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+2026-11-15 21:59:30.305 +07 [14552] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+2026-11-15 21:59:30.305 +07 [25000] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+2026-11-15 21:59:30.305 +07 [9108] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+2026-11-15 21:59:30.305 +07 [23676] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+2026-11-15 21:59:30.305 +07 [15664] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+2026-11-15 21:59:30.305 +07 [26400] LOG:  could not receive data from client: An existing connection was forcibly closed by the remote host.
+2026-11-15 21:59:30.366 +07 [12236] LOG:  received fast shutdown request
+2026-11-15 21:59:30.367 +07 [12236] LOG:  aborting any active transactions
+2026-11-15 21:59:30.372 +07 [12236] LOG:  background worker "logical replication launcher" (PID 22916) exited with exit code 1
+2026-11-15 21:59:30.373 +07 [6760] LOG:  shutting down
+2026-11-15 21:59:30.374 +07 [6760] LOG:  checkpoint starting: shutdown immediate
+2026-11-15 21:59:30.791 +07 [6760] LOG:  checkpoint complete: wrote 1358 buffers (8.3%); 0 WAL file(s) added, 0 removed, 1 recycled; write=0.191 s, sync=0.211 s, total=0.419 s; sync files=522, longest=0.007 s, average=0.001 s; distance=6547 kB, estimate=6547 kB; lsn=0/21A6BB8, redo lsn=0/21A6BB8
+2026-11-15 21:59:31.683 +07 [12236] LOG:  database system is shut down

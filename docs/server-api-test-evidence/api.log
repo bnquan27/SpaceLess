@@ -1,0 +1,2 @@
+2026-11-15T14:58:49.394838Z  INFO spaceless_server: SpaceLess server ready address=127.0.0.1:50772
+2026-11-15T14:58:59.048971Z  WARN spaceless_server::auth: Password reset email delivery failed

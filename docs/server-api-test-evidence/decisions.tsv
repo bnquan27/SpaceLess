@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-11-15T21:50:28+07:00	setup	Prepare PostgreSQL on loopback with disposable database names	The suite creates accounts and changes persistent state	docs/server-api-test-evidence/run-manifest.txt	Separate empty databases used for both runs
+2026-11-15T21:56:26+07:00	first run	Run the new integration cases with the API and gateway built from source	Validate real HTTP, WebSocket and gateway behavior	docs/server-api-test-evidence/first-result.json	23 pass, 1 fail, 53 operations covered
+2026-11-15T21:58:48+07:00	evidence	Record the preview icon check and sanitized JWT refresh observations on a fresh database	Distinguish an API failure from a stale design description	docs/server-api-test-evidence/result.json	Preview icon failure reproduced and JWT behavior recorded
+2026-11-15T21:59:31+07:00	cleanup	Stop the owned PostgreSQL cluster	Release the local test service when the run exits	docs/server-api-test-evidence/run-manifest.txt	pg_ctl confirmed shutdown

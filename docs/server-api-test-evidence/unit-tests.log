@@ -1,0 +1,24 @@
+   Compiling spaceless-server v0.1.0 (W:\projects\SpaceLessApp\server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 40.93s
+     Running unittests src\lib.rs (C:/Users/Quan/.codex/visualizations/2026/11/15/01a1dfaa-012c-78a0-b6cb-d2f30479b210/cargo-target\debug\deps\spaceless_server-e01768b61f30396b.exe)
+
+running 5 tests
+test channels::tests::room_position_includes_hidden_slots ... ok
+test files::tests::image_metadata_cannot_accept_documents_or_oversize ... ok
+test voice::tests::screen_track_sources_accept_livekit_json_encodings ... ok
+test files::tests::declared_type_must_match_bytes ... ok
+test voice::tests::webhook_authentication_covers_exact_body_and_issuer ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (C:/Users/Quan/.codex/visualizations/2026/11/15/01a1dfaa-012c-78a0-b6cb-d2f30479b210/cargo-target\debug\deps\spaceless_server-995259b732a672d7.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests spaceless_server
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

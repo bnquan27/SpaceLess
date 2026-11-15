@@ -1,0 +1,2647 @@
+{
+  "summary": {
+    "startedAt": "2026-11-15T14:58:48.728Z",
+    "finishedAt": "2026-11-15T14:59:30.322Z",
+    "node": "v24.22.1",
+    "registeredRoutes": 52,
+    "aliases": 1,
+    "passed": 23,
+    "failed": 1,
+    "requests": 347,
+    "covered": 53,
+    "uncovered": []
+  },
+  "coverage": {
+    "DELETE /blocks/{target_user_id}": {
+      "attempted": [
+        "Declining clears a request and each person controls their own block"
+      ],
+      "successful": [
+        "Declining clears a request and each person controls their own block"
+      ]
+    },
+    "DELETE /channels/{channel_id}": {
+      "attempted": [
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ],
+      "successful": [
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ]
+    },
+    "DELETE /channels/{channel_id}/categories/{category_id}": {
+      "attempted": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ],
+      "successful": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ]
+    },
+    "DELETE /channels/{channel_id}/members/me": {
+      "attempted": [
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves"
+      ],
+      "successful": [
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves"
+      ]
+    },
+    "DELETE /channels/{channel_id}/members/{user_id}": {
+      "attempted": [
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves"
+      ],
+      "successful": [
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves"
+      ]
+    },
+    "DELETE /channels/{channel_id}/rooms/{room_id}": {
+      "attempted": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ],
+      "successful": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ]
+    },
+    "DELETE /friends/{target_user_id}": {
+      "attempted": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only"
+      ],
+      "successful": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only"
+      ]
+    },
+    "DELETE /rooms/{room_id}/messages/{message_id}": {
+      "attempted": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Attachment uploads preserve bytes and the gateway serves a range"
+      ],
+      "successful": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Attachment uploads preserve bytes and the gateway serves a range"
+      ]
+    },
+    "DELETE /rooms/{room_id}/messages/{message_id}/reactions/me": {
+      "attempted": [
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user"
+      ],
+      "successful": [
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user"
+      ]
+    },
+    "DELETE /rooms/{room_id}/voice/leave": {
+      "attempted": [
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ],
+      "successful": [
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ]
+    },
+    "GET /attachments/{attachment_id}/url": {
+      "attempted": [
+        "Attachment uploads preserve bytes and the gateway serves a range"
+      ],
+      "successful": [
+        "Attachment uploads preserve bytes and the gateway serves a range"
+      ]
+    },
+    "GET /bootstrap": {
+      "attempted": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ],
+      "successful": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ]
+    },
+    "GET /channel-links/{invite_code}": {
+      "attempted": [
+        "Channel settings, public preview, idempotent join, and deletion",
+        "A signed-in visitor can open the icon supplied by a public channel preview"
+      ],
+      "successful": [
+        "Channel settings, public preview, idempotent join, and deletion"
+      ]
+    },
+    "GET /files/{upload_id}": {
+      "attempted": [
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "A signed-in visitor can open the icon supplied by a public channel preview"
+      ],
+      "successful": [
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Avatar and both channel image purposes can be uploaded and read back"
+      ]
+    },
+    "GET /images/{upload_id}/url": {
+      "attempted": [
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "A signed-in visitor can open the icon supplied by a public channel preview"
+      ],
+      "successful": [
+        "Avatar and both channel image purposes can be uploaded and read back"
+      ]
+    },
+    "GET /rooms/{room_id}/messages": {
+      "attempted": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events"
+      ],
+      "successful": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events"
+      ]
+    },
+    "GET /rooms/{room_id}/messages/{message_id}/reactions": {
+      "attempted": [
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user"
+      ],
+      "successful": [
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user"
+      ]
+    },
+    "GET /users/me": {
+      "attempted": [
+        "Registration returns a profile and username sign-in grants access to it",
+        "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins"
+      ],
+      "successful": [
+        "Registration returns a profile and username sign-in grants access to it",
+        "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins"
+      ]
+    },
+    "GET /users/search": {
+      "attempted": [
+        "User search paginates public profiles using decimal string cursors",
+        "Accepted friendship opens one DM and removing friendship makes it read-only"
+      ],
+      "successful": [
+        "User search paginates public profiles using decimal string cursors",
+        "Accepted friendship opens one DM and removing friendship makes it read-only"
+      ]
+    },
+    "GET /ws": {
+      "attempted": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Voice joins, signed webhooks update screen state, and leave removes the session"
+      ],
+      "successful": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Voice joins, signed webhooks update screen state, and leave removes the session"
+      ]
+    },
+    "PATCH /channels/{channel_id}": {
+      "attempted": [
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "A signed-in visitor can open the icon supplied by a public channel preview"
+      ],
+      "successful": [
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Avatar and both channel image purposes can be uploaded and read back"
+      ]
+    },
+    "PATCH /channels/{channel_id}/categories/{category_id}": {
+      "attempted": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ],
+      "successful": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ]
+    },
+    "PATCH /channels/{channel_id}/members/{user_id}/role": {
+      "attempted": [
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves"
+      ],
+      "successful": [
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves"
+      ]
+    },
+    "PATCH /channels/{channel_id}/rooms/{room_id}": {
+      "attempted": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes"
+      ],
+      "successful": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes"
+      ]
+    },
+    "PATCH /friends/requests/{request_id}": {
+      "attempted": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ],
+      "successful": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ]
+    },
+    "PATCH /invitations/{invitation_id}": {
+      "attempted": [
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ],
+      "successful": [
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ]
+    },
+    "PATCH /rooms/{room_id}/messages/{message_id}": {
+      "attempted": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt"
+      ],
+      "successful": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt"
+      ]
+    },
+    "PATCH /users/me": {
+      "attempted": [
+        "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+        "Avatar and both channel image purposes can be uploaded and read back"
+      ],
+      "successful": [
+        "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+        "Avatar and both channel image purposes can be uploaded and read back"
+      ]
+    },
+    "POST /auth/forgot-password": {
+      "attempted": [
+        "Recovery returns the same message for known and unknown addresses and enforces its quota"
+      ],
+      "successful": [
+        "Recovery returns the same message for known and unknown addresses and enforces its quota"
+      ]
+    },
+    "POST /auth/login": {
+      "attempted": [
+        "Registration returns a profile and username sign-in grants access to it",
+        "Registration validates required fields and rejects duplicate identities",
+        "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Recovery returns the same message for known and unknown addresses and enforces its quota",
+        "Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins",
+        "User search paginates public profiles using decimal string cursors",
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "A signed-in visitor can open the icon supplied by a public channel preview",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ],
+      "successful": [
+        "Registration returns a profile and username sign-in grants access to it",
+        "Registration validates required fields and rejects duplicate identities",
+        "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Recovery returns the same message for known and unknown addresses and enforces its quota",
+        "Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins",
+        "User search paginates public profiles using decimal string cursors",
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ]
+    },
+    "POST /auth/logout": {
+      "attempted": [
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Refresh closes the old WebSocket and logout closes the replacement"
+      ],
+      "successful": [
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Refresh closes the old WebSocket and logout closes the replacement"
+      ]
+    },
+    "POST /auth/refresh": {
+      "attempted": [
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Refresh closes the old WebSocket and logout closes the replacement"
+      ],
+      "successful": [
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Refresh closes the old WebSocket and logout closes the replacement"
+      ]
+    },
+    "POST /auth/register": {
+      "attempted": [
+        "Registration returns a profile and username sign-in grants access to it",
+        "Registration validates required fields and rejects duplicate identities",
+        "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Recovery returns the same message for known and unknown addresses and enforces its quota",
+        "Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins",
+        "User search paginates public profiles using decimal string cursors",
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "A signed-in visitor can open the icon supplied by a public channel preview",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ],
+      "successful": [
+        "Registration returns a profile and username sign-in grants access to it",
+        "Registration validates required fields and rejects duplicate identities",
+        "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+        "Refresh replaces the current token and logout ends only its sign-in",
+        "Recovery returns the same message for known and unknown addresses and enforces its quota",
+        "Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins",
+        "User search paginates public profiles using decimal string cursors",
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ]
+    },
+    "POST /auth/reset-password": {
+      "attempted": [
+        "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+        "Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins"
+      ],
+      "successful": [
+        "Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins"
+      ]
+    },
+    "POST /blocks": {
+      "attempted": [
+        "Declining clears a request and each person controls their own block"
+      ],
+      "successful": [
+        "Declining clears a request and each person controls their own block"
+      ]
+    },
+    "POST /channel-links/{invite_code}/join": {
+      "attempted": [
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events"
+      ],
+      "successful": [
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events"
+      ]
+    },
+    "POST /channels": {
+      "attempted": [
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "A signed-in visitor can open the icon supplied by a public channel preview",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ],
+      "successful": [
+        "Channel settings, public preview, idempotent join, and deletion",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ]
+    },
+    "POST /channels/{channel_id}/categories": {
+      "attempted": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ],
+      "successful": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ]
+    },
+    "POST /channels/{channel_id}/images/uploads/presign": {
+      "attempted": [
+        "Avatar and both channel image purposes can be uploaded and read back",
+        "A signed-in visitor can open the icon supplied by a public channel preview"
+      ],
+      "successful": [
+        "Avatar and both channel image purposes can be uploaded and read back"
+      ]
+    },
+    "POST /channels/{channel_id}/invitations": {
+      "attempted": [
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ],
+      "successful": [
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ]
+    },
+    "POST /channels/{channel_id}/rooms": {
+      "attempted": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ],
+      "successful": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted",
+        "Private room visibility follows explicit membership and privacy changes",
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range",
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ]
+    },
+    "POST /channels/{channel_id}/transfer-ownership": {
+      "attempted": [
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves"
+      ],
+      "successful": [
+        "Creator changes member roles, transfers ownership, kicks a member, and leaves"
+      ]
+    },
+    "POST /dms": {
+      "attempted": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only"
+      ],
+      "successful": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only"
+      ]
+    },
+    "POST /friends/requests": {
+      "attempted": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ],
+      "successful": [
+        "Accepted friendship opens one DM and removing friendship makes it read-only",
+        "Declining clears a request and each person controls their own block",
+        "Channel invitations record individual outcomes, accept, decline, and cancel on deletion"
+      ]
+    },
+    "POST /rooms/{room_id}/messages": {
+      "attempted": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range"
+      ],
+      "successful": [
+        "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+        "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+        "Read marks only advance and synchronize room history, unread counts, and socket events",
+        "Refresh closes the old WebSocket and logout closes the replacement",
+        "Attachment uploads preserve bytes and the gateway serves a range"
+      ]
+    },
+    "POST /rooms/{room_id}/uploads/presign": {
+      "attempted": [
+        "Attachment uploads preserve bytes and the gateway serves a range"
+      ],
+      "successful": [
+        "Attachment uploads preserve bytes and the gateway serves a range"
+      ]
+    },
+    "POST /rooms/{room_id}/voice/join": {
+      "attempted": [
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ],
+      "successful": [
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ]
+    },
+    "POST /users/me/avatar/uploads/presign": {
+      "attempted": [
+        "Avatar and both channel image purposes can be uploaded and read back"
+      ],
+      "successful": [
+        "Avatar and both channel image purposes can be uploaded and read back"
+      ]
+    },
+    "POST /webhooks/livekit": {
+      "attempted": [
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ],
+      "successful": [
+        "Voice joins, signed webhooks update screen state, and leave removes the session",
+        "Switching devices revokes the previous voice session and ignores its late leave"
+      ]
+    },
+    "PUT /channels/{channel_id}/categories/order": {
+      "attempted": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ],
+      "successful": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ]
+    },
+    "PUT /channels/{channel_id}/rooms/order": {
+      "attempted": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ],
+      "successful": [
+        "Category and room mutations persist order and preserve rooms when a category is deleted"
+      ]
+    },
+    "PUT /rooms/{room_id}/messages/{message_id}/reactions/me": {
+      "attempted": [
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user"
+      ],
+      "successful": [
+        "Reactions report caller-specific state and paginate, replace, and remove one reaction per user"
+      ]
+    },
+    "PUT /rooms/{room_id}/read-state": {
+      "attempted": [
+        "Read marks only advance and synchronize room history, unread counts, and socket events"
+      ],
+      "successful": [
+        "Read marks only advance and synchronize room history, unread counts, and socket events"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "Registration returns a profile and username sign-in grants access to it",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 401,
+          "observed": 401,
+          "code": "UNAUTHORIZED"
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 401,
+          "observed": 401,
+          "code": "INVALID_CREDENTIALS"
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 401,
+          "observed": 401,
+          "code": "INVALID_CREDENTIALS"
+        }
+      ]
+    },
+    {
+      "name": "Registration validates required fields and rejects duplicate identities",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_BODY"
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 400,
+          "observed": 400,
+          "code": "Số điện thoại không hợp lệ."
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 400,
+          "observed": 400,
+          "code": "Ngày sinh không được ở tương lai."
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 400,
+          "observed": 400,
+          "code": "Mật khẩu phải có từ 12 đến 128 ký tự."
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 409,
+          "observed": 409,
+          "code": "Tên đăng nhập hoặc email đã được sử dụng."
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 409,
+          "observed": 409,
+          "code": "Tên đăng nhập hoặc email đã được sử dụng."
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        }
+      ]
+    },
+    {
+      "name": "Profile updates persist, reject duplicate email, and retire recovery for the old address",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /users/me",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /users/me",
+          "expected": 409,
+          "observed": 409,
+          "code": "Tên đăng nhập hoặc email đã được sử dụng."
+        },
+        {
+          "route": "PATCH /users/me",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_BODY"
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /users/me",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/reset-password",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_RESET_TOKEN"
+        }
+      ]
+    },
+    {
+      "name": "Refresh replaces the current token and logout ends only its sign-in",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/refresh",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 401,
+          "observed": 401,
+          "code": "UNAUTHORIZED"
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/logout",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 401,
+          "observed": 401,
+          "code": "UNAUTHORIZED"
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 200,
+          "observed": 200
+        }
+      ],
+      "observations": {
+        "jwtRefresh": {
+          "jtiChanged": true,
+          "sidPreserved": true
+        }
+      }
+    },
+    {
+      "name": "Recovery returns the same message for known and unknown addresses and enforces its quota",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/forgot-password",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/forgot-password",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/forgot-password",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/forgot-password",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/forgot-password",
+          "expected": 429,
+          "observed": 429,
+          "code": "RATE_LIMITED"
+        }
+      ]
+    },
+    {
+      "name": "Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/reset-password",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_RESET_TOKEN"
+        },
+        {
+          "route": "POST /auth/reset-password",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "POST /auth/reset-password",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_RESET_TOKEN"
+        },
+        {
+          "route": "POST /auth/reset-password",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_RESET_TOKEN"
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 401,
+          "observed": 401,
+          "code": "UNAUTHORIZED"
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 401,
+          "observed": 401,
+          "code": "UNAUTHORIZED"
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 401,
+          "observed": 401,
+          "code": "INVALID_CREDENTIALS"
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /users/me",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "User search paginates public profiles using decimal string cursors",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /users/search",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /users/search",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /users/search",
+          "expected": 400,
+          "observed": 400,
+          "code": "Số kết quả phải từ 1 đến 50."
+        }
+      ]
+    },
+    {
+      "name": "Accepted friendship opens one DM and removing friendship makes it read-only",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /dms",
+          "expected": 409,
+          "observed": 409,
+          "code": "Không thể thực hiện thao tác này với tài khoản được chọn."
+        },
+        {
+          "route": "POST /friends/requests",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /friends/requests",
+          "expected": 409,
+          "observed": 409,
+          "code": "Không thể thực hiện thao tác này với tài khoản được chọn."
+        },
+        {
+          "route": "GET /users/search",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /users/search",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /friends/requests/{request_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /dms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /dms",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /friends/{target_user_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "DELETE /friends/{target_user_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /dms",
+          "expected": 409,
+          "observed": 409,
+          "code": "Không thể thực hiện thao tác này với tài khoản được chọn."
+        },
+        {
+          "route": "POST /friends/requests",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "PATCH /friends/requests/{request_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /dms",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "Declining clears a request and each person controls their own block",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /friends/requests",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "PATCH /friends/requests/{request_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /friends/requests",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /blocks",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "POST /blocks",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /blocks",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "DELETE /blocks/{target_user_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "POST /friends/requests",
+          "expected": 409,
+          "observed": 409,
+          "code": "Không thể thực hiện thao tác này với tài khoản được chọn."
+        },
+        {
+          "route": "DELETE /blocks/{target_user_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "POST /friends/requests",
+          "expected": 201,
+          "observed": 201
+        }
+      ]
+    },
+    {
+      "name": "Channel settings, public preview, idempotent join, and deletion",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_NAME"
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /channel-links/{invite_code}",
+          "expected": 404,
+          "observed": 404,
+          "code": "NOT_FOUND"
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /channel-links/{invite_code}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channel-links/{invite_code}/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channel-links/{invite_code}/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channel-links/{invite_code}/join",
+          "expected": 404,
+          "observed": 404,
+          "code": "NOT_FOUND"
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /channels/{channel_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /channel-links/{invite_code}",
+          "expected": 404,
+          "observed": 404,
+          "code": "NOT_FOUND"
+        }
+      ]
+    },
+    {
+      "name": "Channel invitations record individual outcomes, accept, decline, and cancel on deletion",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /friends/requests",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "PATCH /friends/requests/{request_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /invitations/{invitation_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/invitations",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/invitations",
+          "expected": 409,
+          "observed": 409,
+          "code": "INVITATION_UNAVAILABLE"
+        },
+        {
+          "route": "PATCH /invitations/{invitation_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels/{channel_id}/invitations",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "DELETE /channels/{channel_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "PATCH /invitations/{invitation_id}",
+          "expected": 409,
+          "observed": 409,
+          "code": "INVITATION_UNAVAILABLE"
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "Creator changes member roles, transfers ownership, kicks a member, and leaves",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channel-links/{invite_code}/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channel-links/{invite_code}/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /channels/{channel_id}/members/me",
+          "expected": 409,
+          "observed": 409,
+          "code": "CREATOR_MUST_TRANSFER"
+        },
+        {
+          "route": "PATCH /channels/{channel_id}/members/{user_id}/role",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels/{channel_id}/transfer-ownership",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /channels/{channel_id}/members/{user_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channel-links/{invite_code}/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /channels/{channel_id}/members/me",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "Category and room mutations persist order and preserve rooms when a category is deleted",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/categories",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/categories",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "PATCH /channels/{channel_id}/categories/{category_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PUT /channels/{channel_id}/categories/order",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_ORDER"
+        },
+        {
+          "route": "PUT /channels/{channel_id}/categories/order",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "PATCH /channels/{channel_id}/rooms/{room_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PUT /channels/{channel_id}/rooms/order",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_ORDER"
+        },
+        {
+          "route": "PUT /channels/{channel_id}/rooms/order",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /channels/{channel_id}/categories/{category_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /channels/{channel_id}/rooms/{room_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "Private room visibility follows explicit membership and privacy changes",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channel-links/{invite_code}/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /channels/{channel_id}/rooms/{room_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /channels/{channel_id}/rooms/{room_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /channels/{channel_id}/rooms/{room_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /channels/{channel_id}/rooms/{room_id}",
+          "expected": 400,
+          "observed": 400,
+          "code": "ROOM_MEMBERS_REQUIRED"
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /channels/{channel_id}/rooms/{room_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "Message retries preserve identity and edits, and deletion preserves the retry receipt",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /ws",
+          "expected": 101,
+          "observed": 101
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /rooms/{room_id}/messages/{message_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 409,
+          "observed": 409,
+          "code": "CLIENT_ID_REUSED"
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/messages/{message_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 409,
+          "observed": 409,
+          "code": "MESSAGE_DELETED"
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "Reconnect catches up through a fixed history snapshot and advances across deleted sequences",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /ws",
+          "expected": 101,
+          "observed": 101
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/messages/{message_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /ws",
+          "expected": 101,
+          "observed": 101
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/messages/{message_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_CURSOR"
+        }
+      ]
+    },
+    {
+      "name": "Reactions report caller-specific state and paginate, replace, and remove one reaction per user",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channel-links/{invite_code}/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /ws",
+          "expected": 101,
+          "observed": 101
+        },
+        {
+          "route": "GET /ws",
+          "expected": 101,
+          "observed": 101
+        },
+        {
+          "route": "PUT /rooms/{room_id}/messages/{message_id}/reactions/me",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "PUT /rooms/{room_id}/messages/{message_id}/reactions/me",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "PUT /rooms/{room_id}/messages/{message_id}/reactions/me",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages/{message_id}/reactions",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages/{message_id}/reactions",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/messages/{message_id}/reactions/me",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/messages/{message_id}/reactions/me",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages/{message_id}/reactions",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "Read marks only advance and synchronize room history, unread counts, and socket events",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channel-links/{invite_code}/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /ws",
+          "expected": 101,
+          "observed": 101
+        },
+        {
+          "route": "PUT /rooms/{room_id}/read-state",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PUT /rooms/{room_id}/read-state",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PUT /rooms/{room_id}/read-state",
+          "expected": 400,
+          "observed": 400,
+          "code": "INVALID_SEQUENCE"
+        },
+        {
+          "route": "GET /rooms/{room_id}/messages",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "Refresh closes the old WebSocket and logout closes the replacement",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /ws",
+          "expected": 101,
+          "observed": 101
+        },
+        {
+          "route": "POST /auth/refresh",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /ws",
+          "expected": 101,
+          "observed": 101
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/logout",
+          "expected": 204,
+          "observed": 204
+        }
+      ]
+    },
+    {
+      "name": "Attachment uploads preserve bytes and the gateway serves a range",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/uploads/presign",
+          "expected": 400,
+          "observed": 400,
+          "code": "Kích thước tệp vượt giới hạn."
+        },
+        {
+          "route": "POST /rooms/{room_id}/uploads/presign",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /rooms/{room_id}/messages",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "GET /attachments/{attachment_id}/url",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /files/{upload_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /files/{upload_id}",
+          "expected": 206,
+          "observed": 206
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/messages/{message_id}",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /files/{upload_id}",
+          "expected": 404,
+          "observed": 404,
+          "code": "NOT_FOUND"
+        }
+      ],
+      "observations": {
+        "attachmentBytes": {
+          "uploaded": 37,
+          "downloaded": 37,
+          "ranged": 9,
+          "contentRange": "bytes 0-8/37"
+        }
+      }
+    },
+    {
+      "name": "Avatar and both channel image purposes can be uploaded and read back",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /users/me/avatar/uploads/presign",
+          "expected": 400,
+          "observed": 400,
+          "code": "Định dạng tệp không được hỗ trợ."
+        },
+        {
+          "route": "POST /users/me/avatar/uploads/presign",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /users/me",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels/{channel_id}/images/uploads/presign",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels/{channel_id}/images/uploads/presign",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /images/{upload_id}/url",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /files/{upload_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /images/{upload_id}/url",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /files/{upload_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /images/{upload_id}/url",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /files/{upload_id}",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    },
+    {
+      "name": "A signed-in visitor can open the icon supplied by a public channel preview",
+      "status": "failed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/images/uploads/presign",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "PATCH /channels/{channel_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /channel-links/{invite_code}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /images/{upload_id}/url",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /files/{upload_id}",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /images/{upload_id}/url",
+          "expected": 200,
+          "observed": 404,
+          "code": "NOT_FOUND"
+        }
+      ],
+      "observations": {
+        "previewIcon": {
+          "previewReturnsIconUrl": true,
+          "ownerDownloadedBytes": 70
+        }
+      },
+      "error": "GET /images/{upload_id}/url NOT_FOUND\n\n404 !== 200\n",
+      "location": "at recordResponse (file:///W:/projects/SpaceLessApp/server/test/api-integration.mjs:87:10)"
+    },
+    {
+      "name": "Voice joins, signed webhooks update screen state, and leave removes the session",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/voice/join",
+          "expected": 400,
+          "observed": 400,
+          "code": "VOICE_ROOM_REQUIRED"
+        },
+        {
+          "route": "GET /ws",
+          "expected": 101,
+          "observed": 101
+        },
+        {
+          "route": "POST /rooms/{room_id}/voice/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /webhooks/livekit",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "POST /webhooks/livekit",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /webhooks/livekit",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /webhooks/livekit",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/voice/leave",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/voice/leave",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        }
+      ],
+      "observations": {
+        "voiceLifecycle": {
+          "states": [
+            "PENDING",
+            "CONNECTED"
+          ],
+          "events": [
+            "SCREEN_SHARE_START",
+            "SCREEN_SHARE_STOP"
+          ],
+          "sessionsAfterLeave": 0,
+          "providerRemovalCalls": 1
+        }
+      }
+    },
+    {
+      "name": "Switching devices revokes the previous voice session and ignores its late leave",
+      "status": "passed",
+      "requests": [
+        {
+          "route": "POST /auth/register",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /auth/login",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /channels",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /channels/{channel_id}/rooms",
+          "expected": 201,
+          "observed": 201
+        },
+        {
+          "route": "POST /rooms/{room_id}/voice/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /webhooks/livekit",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "POST /rooms/{room_id}/voice/join",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "POST /webhooks/livekit",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/voice/leave",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        },
+        {
+          "route": "DELETE /rooms/{room_id}/voice/leave",
+          "expected": 204,
+          "observed": 204
+        },
+        {
+          "route": "GET /bootstrap",
+          "expected": 200,
+          "observed": 200
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+Checkout: 858f115856079bfa032799e4f0a7b7de3ccc4d71
+Server binary SHA-256: C3A1918B033D98EE3E198D74E3A49D485D159DFB9E1D5B8495A904F30422DC9C
+Runtime: Node v24.22.1
+Database engine: postgres (PostgreSQL) 17.11
+Build: cargo build --manifest-path server/Cargo.toml --locked --offline
+Rust tests: cargo test --manifest-path server/Cargo.toml --locked --offline (exit 0)
+Integration: node server/test/api-integration.mjs <fresh binary> <psql> docs/qa/api-integration-2026-11-15
+Database: fresh spaceless_test_final in disposable PostgreSQL cluster on IPv4 loopback
+Baseline reproduction: first integration run used a separate empty database named spaceless_test_first
+Providers: loopback S3 and LiveKit protocol fixtures. SMTP delivery unavailable by design.
+Integration exit code 1
+PostgreSQL shutdown confirmed by pg_ctl.

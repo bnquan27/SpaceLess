@@ -1,0 +1,28 @@
+PASSED Registration returns a profile and username sign-in grants access to it
+PASSED Registration validates required fields and rejects duplicate identities
+PASSED Profile updates persist, reject duplicate email, and retire recovery for the old address
+PASSED Refresh replaces the current token and logout ends only its sign-in
+PASSED Recovery returns the same message for known and unknown addresses and enforces its quota
+PASSED Password reset accepts a valid token once, replaces the password, and ends all prior sign-ins
+PASSED User search paginates public profiles using decimal string cursors
+PASSED Accepted friendship opens one DM and removing friendship makes it read-only
+PASSED Declining clears a request and each person controls their own block
+PASSED Channel settings, public preview, idempotent join, and deletion
+PASSED Channel invitations record individual outcomes, accept, decline, and cancel on deletion
+PASSED Creator changes member roles, transfers ownership, kicks a member, and leaves
+PASSED Category and room mutations persist order and preserve rooms when a category is deleted
+PASSED Private room visibility follows explicit membership and privacy changes
+PASSED Message retries preserve identity and edits, and deletion preserves the retry receipt
+PASSED Reconnect catches up through a fixed history snapshot and advances across deleted sequences
+PASSED Reactions report caller-specific state and paginate, replace, and remove one reaction per user
+PASSED Read marks only advance and synchronize room history, unread counts, and socket events
+PASSED Refresh closes the old WebSocket and logout closes the replacement
+PASSED Attachment uploads preserve bytes and the gateway serves a range
+PASSED Avatar and both channel image purposes can be uploaded and read back
+FAILED A signed-in visitor can open the icon supplied by a public channel preview | GET /images/{upload_id}/url NOT_FOUND
+
+404 !== 200
+
+PASSED Voice joins, signed webhooks update screen state, and leave removes the session
+PASSED Switching devices revokes the previous voice session and ignores its late leave
+{"startedAt":"2026-11-15T14:58:48.728Z","finishedAt":"2026-11-15T14:59:30.322Z","node":"v24.22.1","registeredRoutes":52,"aliases":1,"passed":23,"failed":1,"requests":347,"covered":53,"uncovered":[]}
