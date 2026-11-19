@@ -379,6 +379,19 @@ button svg { flex-shrink: 0; }
 .app-login .login-submit { min-height: 48px; font-size: 14px; }
 .app-login .signup-prompt, .app-login .signup-prompt > button { font-size: 14px; }
 .app-login .signup-prompt { margin-top: 8px; }
+.google-auth { margin-top: 18px; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; color: var(--muted); font-size: 12px; }
+.auth-divider > span { height: 1px; flex: 1; background: color-mix(in srgb, var(--muted) 30%, transparent); }
+.google-signin { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px solid #747775; border-radius: 7px; background: #fff; color: #1f1f1f; padding: 10px 12px; font-size: 14px; font-weight: 500; }
+.google-signin:hover:enabled { background: #f2f2f2; }
+.google-signin > img { flex-shrink: 0; }
+.auth-help { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.auth-cancel { border: 0; background: none; color: var(--accent); min-height: 44px; padding: 6px 0; font-size: 13px; text-decoration: underline; text-underline-offset: 4px; }
+.app-login { position: relative; }
+.open-workspace-preview { display: block; margin: 0 auto; min-height: 44px; padding: 10px 20px; border: 0; background: transparent; color: #dfd2ef; font-size: 12px; text-decoration: underline; text-underline-offset: 4px; }
+.app-auth-notice, .workspace-preview-notice { margin: 0; padding: 10px 20px; background: #2e253e; color: #f4effa; font-size: 12px; line-height: 1.6; text-align: center; }
+.app-workspace-preview { height: 100dvh; display: flex; flex-direction: column; }
+.app-workspace-preview > .space-workspace { flex: 1; min-height: 0; height: auto; }
 .app-login .form-bottom { margin-top: 16px; }
 .app-login .form-bottom-copy, .app-login .login-footer { font-size: 12px; }
 .app-login .field-error, .app-login .form-error, .app-login .form-notice,

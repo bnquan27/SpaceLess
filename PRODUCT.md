@@ -17,7 +17,7 @@ Real-time messaging and voice/video communication, including friends, DM, Channe
 People using the desktop app to exchange messages and communicate in real time. A narrower audience and differentiating market position remain undecided.
 
 ## Capabilities and Constraints
-Username/password login; email-based recovery. DM only between friends; voice/video and screen sharing in VOICE rooms. Authoritative REST/WebSocket server topology and hosting remain open decisions. The current implementation is the standalone Orbit sign-in page in Tauri; the comparison interface remains at `/design`. Authentication and messaging services are not yet connected.
+Username/password login and Google sign-in are available in Tauri when the Rust API is configured. Google sign-in creates a SpaceLess account on first use. Account recovery uses email for password accounts. DM only between friends. Voice/video and screen sharing belong in VOICE rooms. The workspace still uses sample data, and hosting for the REST/WebSocket server remains open. The Orbit sign-in design comparison remains at `/design`.
 
 ## Brand Commitments
 Orbit is the user-approved sign-in direction (2026-11-08), including a floating astronaut. Preserve its plum/lilac space composition in sign-in work.
