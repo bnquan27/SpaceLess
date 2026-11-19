@@ -18,12 +18,15 @@
 | --- | --- | --- |
 | `POST /auth/register` | `username`, `password`, `full_name`, `date_of_birth`, `email`, `phone` | Công khai. Tạo hồ sơ chính chủ, ngày sinh không ở tương lai. |
 | `POST /auth/login` | `username`, `password` | Công khai. Trả `access_token`, `expires_at`. Sai tài khoản hoặc mật khẩu dùng chung thông báo. Chỉ báo khóa sau khi xác minh mật khẩu. |
+| `POST /auth/google/exchange` | `code`, `code_verifier`, `nonce`, `loopback_port` | Công khai khi máy chủ bật Google OAuth. Đổi mã một lần để cấp phiên SpaceLess. Dùng Google `sub` để tìm tài khoản. Email trùng tài khoản khác trả `409`. |
 | `POST /auth/refresh` | Bearer còn hiệu lực | Trả JWT có `jti` mới, giữ `sid` và thu hồi JWT cũ. Mở lại WebSocket bằng JWT mới. |
 | `POST /auth/logout` | Bearer của phiên | Thu hồi đúng phiên, đóng WS và media mà phiên sở hữu. |
 | `POST /auth/forgot-password` | `email` | Công khai, rate-limit. Trả thông báo trung tính. |
 | `POST /auth/reset-password` | `token`, `new_password` | Công khai với reset token còn hiệu lực. Đổi mật khẩu và thu hồi toàn bộ phiên. |
-| `GET /users/me` | Bearer | Hồ sơ chính chủ. |
+| `GET /users/me` | Bearer | Hồ sơ chính chủ. `date_of_birth` và `phone` có thể là `null` với tài khoản Google mới. |
 | `PATCH /users/me` | `full_name`, `date_of_birth`, `phone`, `email`, `address`, `avatar_upload_id` | Hồ sơ sau cập nhật. Username cố định. Đổi email vô hiệu hóa token reset chưa dùng. |
+
+Xem cách cấu hình và thử đăng nhập với [Google OAuth cho desktop](google-sign-in.md).
 
 ### Bạn bè, chặn và DM (§4.2)
 
