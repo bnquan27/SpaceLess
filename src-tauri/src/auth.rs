@@ -5,7 +5,10 @@ use axum::{
     routing::get,
     Router,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{
+    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
+    Engine,
+};
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -21,7 +24,7 @@ use url::Url;
 const CANCELLED: &str = "Đã hủy đăng nhập. Bạn có thể thử lại.";
 const NETWORK_ERROR: &str = "Không thể kết nối máy chủ. Kiểm tra kết nối rồi thử lại.";
 const INVALID_RESPONSE: &str = "Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.";
-const CALLBACK_HTML: &str = "<!doctype html><html lang=vi><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>SpaceLessApp</title><p>Đã nhận phản hồi đăng nhập. Bạn có thể đóng cửa sổ này và quay lại SpaceLessApp.</p></html>";
+const CALLBACK_HTML: &str = include_str!("oauth-return.html");
 
 #[derive(Default)]
 pub struct AuthState(Mutex<AuthInner>);
@@ -324,21 +327,70 @@ fn callback_result(uri: &Uri, expected: &str) -> Option<Result<String, String>> 
 
 struct CallbackState {
     expected: String,
-    sender: Mutex<Option<oneshot::Sender<Result<String, String>>>>,
+    sender: Mutex<Option<oneshot::Sender<CallbackSubmission>>>,
 }
 
-fn callback_page(status: StatusCode) -> Response {
+struct CallbackSubmission {
+    result: Result<String, String>,
+    completion: oneshot::Sender<BrowserOutcome>,
+}
+
+#[derive(Clone, Copy)]
+enum BrowserOutcome {
+    Success,
+    Failed,
+    Cancelled,
+    Expired,
+}
+
+fn callback_page(status: StatusCode, outcome: Option<BrowserOutcome>) -> Response {
+    let (title, message) = match outcome {
+        Some(BrowserOutcome::Success) => (
+            "Đăng nhập thành công",
+            "SpaceLessApp đã xác nhận tài khoản của bạn. Quay lại ứng dụng để tiếp tục.",
+        ),
+        Some(BrowserOutcome::Failed) => (
+            "Chưa thể đăng nhập",
+            "SpaceLessApp chưa thể xác nhận tài khoản. Quay lại ứng dụng để xem thông báo và thử lại.",
+        ),
+        Some(BrowserOutcome::Cancelled) => (
+            "Đã hủy đăng nhập",
+            "Lần đăng nhập này đã được hủy. Bạn có thể quay lại SpaceLessApp để thử lại.",
+        ),
+        Some(BrowserOutcome::Expired) => (
+            "Đã hết thời gian đăng nhập",
+            "SpaceLessApp chưa nhận được xác nhận kịp thời. Quay lại ứng dụng để thử lại.",
+        ),
+        None => (
+            "Liên kết không hợp lệ",
+            "Liên kết này không còn hợp lệ. Hãy quay lại SpaceLessApp và bắt đầu đăng nhập lại.",
+        ),
+    };
+    let action = if outcome.is_some() {
+        r#"<a class="return-link" href="spacelessapp://auth/return">Mở SpaceLessApp</a>"#
+    } else {
+        ""
+    };
+    let page = CALLBACK_HTML
+        .replace("{{TITLE}}", title)
+        .replace("{{MESSAGE}}", message)
+        .replace("{{ACTION}}", action)
+        .replace(
+            "{{ASTRONAUT}}",
+            &STANDARD.encode(include_bytes!("../../public/assets/astronaut.png")),
+        );
     (
         status,
         [
             (header::CACHE_CONTROL, "no-store"),
             (
                 header::CONTENT_SECURITY_POLICY,
-                "default-src 'none'; frame-ancestors 'none'",
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
             ),
             (header::REFERRER_POLICY, "no-referrer"),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
         ],
-        Html(CALLBACK_HTML),
+        Html(page),
     )
         .into_response()
 }
@@ -349,15 +401,32 @@ async fn receive_callback(
     uri: Uri,
 ) -> Response {
     if method != Method::GET {
-        return callback_page(StatusCode::METHOD_NOT_ALLOWED);
+        return callback_page(StatusCode::METHOD_NOT_ALLOWED, None);
     }
     if let Some(result) = callback_result(&uri, &state.expected) {
-        if let Some(sender) = state.sender.lock().unwrap().take() {
-            let _ = sender.send(result);
-            return callback_page(StatusCode::OK);
+        let sender = state.sender.lock().unwrap().take();
+        if let Some(sender) = sender {
+            let (completion, outcome) = oneshot::channel();
+            if sender
+                .send(CallbackSubmission { result, completion })
+                .is_ok()
+            {
+                let outcome = match tokio::time::timeout(Duration::from_secs(60), outcome).await {
+                    Ok(Ok(outcome)) => outcome,
+                    Ok(Err(_)) => BrowserOutcome::Failed,
+                    Err(_) => BrowserOutcome::Expired,
+                };
+                let status = match outcome {
+                    BrowserOutcome::Success => StatusCode::OK,
+                    BrowserOutcome::Failed => StatusCode::BAD_GATEWAY,
+                    BrowserOutcome::Cancelled => StatusCode::GONE,
+                    BrowserOutcome::Expired => StatusCode::GATEWAY_TIMEOUT,
+                };
+                return callback_page(status, Some(outcome));
+            }
         }
     }
-    callback_page(StatusCode::BAD_REQUEST)
+    callback_page(StatusCode::BAD_REQUEST, None)
 }
 
 #[derive(Serialize)]
@@ -391,7 +460,7 @@ pub async fn auth_google_login(
     });
     let router = Router::new()
         .route("/", get(receive_callback))
-        .fallback(|| async { callback_page(StatusCode::NOT_FOUND) })
+        .fallback(|| async { callback_page(StatusCode::NOT_FOUND, None) })
         .with_state(callback);
     let shutdown = CancellationToken::new();
     let stop = shutdown.clone();
@@ -412,11 +481,45 @@ pub async fn auth_google_login(
             })?;
         tokio::select! {
             biased;
+            result = receiver => result.map_err(|_| "Cổng đăng nhập đã đóng. Vui lòng thử lại.".to_string()),
             _ = attempt.cancel.cancelled() => Err(CANCELLED.to_string()),
             _ = tokio::time::sleep(Duration::from_secs(180)) => Err("Đã hết thời gian đăng nhập Google. Hãy thử lại và hoàn tất trong 3 phút.".into()),
-            result = receiver => result.map_err(|_| "Cổng đăng nhập đã đóng. Vui lòng thử lại.".to_string())?,
         }
     }.await;
+    let result = match callback_result {
+        Ok(CallbackSubmission { result, completion }) => {
+            let result = async {
+                let code = result?;
+                if attempt.cancel.is_cancelled() {
+                    return Err(CANCELLED.into());
+                }
+                let response = client()?
+                    .post(api.join("auth/google/exchange").unwrap())
+                    .json(&GoogleExchange {
+                        code,
+                        code_verifier: oauth.verifier,
+                        nonce: oauth.nonce,
+                        loopback_port: port,
+                    })
+                    .send()
+                    .await
+                    .map_err(|_| NETWORK_ERROR.to_string())?;
+                establish(api, response, &attempt).await
+            }
+            .await;
+            let outcome = if result.is_ok() {
+                crate::oauth_return::focus_main_window(&app);
+                BrowserOutcome::Success
+            } else if attempt.cancel.is_cancelled() {
+                BrowserOutcome::Cancelled
+            } else {
+                BrowserOutcome::Failed
+            };
+            let _ = completion.send(outcome);
+            result
+        }
+        Err(error) => Err(error),
+    };
     shutdown.cancel();
     if tokio::time::timeout(Duration::from_secs(1), &mut server)
         .await
@@ -425,22 +528,7 @@ pub async fn auth_google_login(
         server.abort();
         let _ = server.await;
     }
-    let code = callback_result?;
-    if attempt.cancel.is_cancelled() {
-        return Err(CANCELLED.into());
-    }
-    let response = client()?
-        .post(api.join("auth/google/exchange").unwrap())
-        .json(&GoogleExchange {
-            code,
-            code_verifier: oauth.verifier,
-            nonce: oauth.nonce,
-            loopback_port: port,
-        })
-        .send()
-        .await
-        .map_err(|_| NETWORK_ERROR.to_string())?;
-    establish(api, response, &attempt).await
+    result
 }
 
 #[tauri::command]
@@ -601,21 +689,89 @@ mod tests {
             receiver.try_recv(),
             Err(oneshot::error::TryRecvError::Empty)
         ));
-        let accepted = client
+        let pending = tokio::spawn({
+            let client = client.clone();
+            let base = base.clone();
+            async move {
+                client
+                    .get(format!("{base}/?state=expected&code=secret"))
+                    .send()
+                    .await
+                    .unwrap()
+            }
+        });
+        let submission = (&mut receiver).await.unwrap();
+        assert_eq!(submission.result, Ok("secret".into()));
+        assert!(!pending.is_finished());
+        let duplicate = client
             .get(format!("{base}/?state=expected&code=secret"))
             .send()
             .await
             .unwrap();
+        assert_eq!(duplicate.status(), StatusCode::BAD_REQUEST);
+        assert!(!duplicate.text().await.unwrap().contains("spacelessapp://"));
+        submission
+            .completion
+            .send(BrowserOutcome::Success)
+            .unwrap_or_else(|_| panic!("callback closed before confirmation"));
+        let accepted = pending.await.unwrap();
         assert_eq!(accepted.status(), StatusCode::OK);
         assert_eq!(accepted.headers()[header::CACHE_CONTROL], "no-store");
-        assert!(!accepted.text().await.unwrap().contains("secret"));
-        assert_eq!(receiver.await.unwrap(), Ok("secret".into()));
+        let csp = accepted.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap();
+        assert!(csp.contains("default-src 'none'"));
+        assert!(!csp.contains("script-src"));
+        let page = accepted.text().await.unwrap();
+        assert!(!page.contains("secret"));
+        assert!(page.contains("Đăng nhập thành công"));
+        assert!(page.contains("spacelessapp://auth/return"));
         shutdown.cancel();
         tokio::time::timeout(Duration::from_secs(1), server)
             .await
             .unwrap()
             .unwrap();
         assert!(tokio::net::TcpStream::connect(address).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn callback_failure_never_claims_success() {
+        for (outcome, status) in [
+            (Some(BrowserOutcome::Failed), StatusCode::BAD_GATEWAY),
+            (Some(BrowserOutcome::Cancelled), StatusCode::GONE),
+            (None, StatusCode::BAD_GATEWAY),
+        ] {
+            let (sender, receiver) = oneshot::channel();
+            let state = Arc::new(CallbackState {
+                expected: "private-state".into(),
+                sender: Mutex::new(Some(sender)),
+            });
+            let pending = tokio::spawn(receive_callback(
+                State(state),
+                Method::GET,
+                "/?state=private-state&error=denied&error_description=private-error"
+                    .parse()
+                    .unwrap(),
+            ));
+            let submission = receiver.await.unwrap();
+            assert!(submission.result.is_err());
+            assert!(!pending.is_finished());
+            if let Some(outcome) = outcome {
+                let _ = submission.completion.send(outcome);
+            } else {
+                drop(submission.completion);
+            }
+            let response = pending.await.unwrap();
+            assert_eq!(response.status(), status);
+            let page = axum::body::to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap();
+            let page = String::from_utf8(page.to_vec()).unwrap();
+            assert!(!page.contains("Đăng nhập thành công"));
+            assert!(!page.contains("private-state"));
+            assert!(!page.contains("private-error"));
+            assert!(page.contains("spacelessapp://auth/return"));
+        }
     }
 
     #[tokio::test]

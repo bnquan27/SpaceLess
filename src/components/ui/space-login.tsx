@@ -50,6 +50,7 @@ export function SpaceLogin({ direction = 'orbit', onSubmit, googleAuth, classNam
   const usernameRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
   const [motionPaused, setMotionPaused] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const googleHelp = pending === 'google' ? 'Đang chờ Google trong trình duyệt. Hoàn tất đăng nhập trong 3 phút rồi quay lại ứng dụng.' : googleAuth && !googleAuth.enabled ? googleAuth.message : ''
   useEffect(() => {
     const preference = window.matchMedia('(prefers-reduced-motion: reduce)')
     const update = () => setMotionPaused(preference.matches)
@@ -117,10 +118,10 @@ export function SpaceLogin({ direction = 'orbit', onSubmit, googleAuth, classNam
           {notice && <p className="form-notice" role="status">{notice}</p>}
           {mode === 'login' && googleAuth && <div className="google-auth">
             <div className="auth-divider"><span />hoặc<span /></div>
-            <button type="button" className="google-signin" disabled={!googleAuth.enabled || loading} onClick={signInWithGoogle} aria-describedby={`${id}-google-help`}>
+            <button type="button" className="google-signin" disabled={!googleAuth.enabled || loading} onClick={signInWithGoogle} aria-describedby={googleHelp ? `${id}-google-help` : undefined}>
               <img src="/assets/google-g.png" width="18" height="18" alt="" />Đăng nhập bằng Google
             </button>
-            <p id={`${id}-google-help`} className="auth-help" role="status">{pending === 'google' ? 'Đang chờ Google trong trình duyệt. Hoàn tất đăng nhập trong 3 phút rồi quay lại ứng dụng.' : googleAuth.message}</p>
+            {googleHelp && <p id={`${id}-google-help`} className="auth-help" role="status">{googleHelp}</p>}
             {pending === 'google' && <button type="button" className="auth-cancel" onClick={cancelGoogle}>Hủy đăng nhập Google</button>}
           </div>}
           {mode === 'login' && <p className="signup-prompt">Chưa có tài khoản? <button type="button" disabled={loading} onClick={() => changeMode('register')}>Tạo tài khoản <ArrowUpRight size={13} /></button></p>}

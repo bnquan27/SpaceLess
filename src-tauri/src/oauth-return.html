@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{TITLE}} · SpaceLessApp</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root { font-family: "Be Vietnam Pro", "Segoe UI", sans-serif; color: #f4effa; background: #100e18; color-scheme: dark; }
+    body { margin: 0; min-width: 280px; min-height: 100svh; display: grid; place-items: center; padding: 40px; }
+    ::selection { background: #c8b2f1; color: #271737; }
+    main { width: min(100%, 1040px); min-height: 600px; display: grid; grid-template-columns: 1fr 1fr; background: #15121d; overflow: hidden; border-radius: 16px; box-shadow: 0 24px 80px #08060f66; }
+    .scene { position: relative; overflow: hidden; min-height: 600px; padding: 32px; background: radial-gradient(ellipse at 70% 28%, #30264a 0%, #1c172c 52%, #100e1c 100%); }
+    .brand { position: relative; z-index: 1; display: flex; align-items: center; gap: 9px; font-size: 17px; font-weight: 500; letter-spacing: -.5px; }
+    .brand svg { width: 27px; height: 27px; color: #c8b2f1; }
+    .brand-app { opacity: .65; font-weight: 400; }
+    .scene-copy { position: relative; z-index: 1; margin-top: 64px; }
+    .scene-copy p { margin: 0; font-size: 36px; font-weight: 500; line-height: 1.4; letter-spacing: -.03em; }
+    .scene-copy span { color: #c4a5e7; }
+    .stars { position: absolute; inset: 0; opacity: .7; background-image: radial-gradient(circle, #eddaff 1px, transparent 1.5px), radial-gradient(circle, #eddaff 1px, transparent 1.5px), radial-gradient(circle, #eddaff 1.5px, transparent 2px); background-size: 79px 113px, 127px 97px, 223px 191px; background-position: 13px 19px, 43px 71px, 157px 121px; }
+    .planet { position: absolute; width: 700px; height: 700px; bottom: -544px; left: -195px; border-radius: 50%; background: radial-gradient(ellipse at 70% 2%, #a780bd 0, #695179 19%, #302338 43%, #161121 63%); box-shadow: 0 -6px 32px #ac83dc40; }
+    .orbit { position: absolute; width: 620px; height: 245px; bottom: 65px; left: -90px; border: 1px solid #b6a0d529; border-radius: 50%; transform: rotate(-32deg); }
+    .orbit::after { content: ""; position: absolute; inset: -18px; border: 1px solid #b6a0d514; border-radius: 50%; }
+    .astronaut { position: absolute; width: 400px; height: 400px; object-fit: contain; top: 232px; left: calc(50% - 195px); transform: rotate(6deg); filter: drop-shadow(8px 18px 16px #0a031b80); }
+    .scene-caption { position: absolute; z-index: 1; left: 32px; bottom: 33px; margin: 0; font-size: 11px; line-height: 1.7; color: #e1cdeb; }
+    .content { display: flex; flex-direction: column; justify-content: center; padding: 56px 48px; }
+    .symbol { width: 36px; height: 36px; color: #c8b2f1; margin-bottom: 24px; }
+    h1 { margin: 0 0 17px; font-size: 30px; font-weight: 500; line-height: 1.4; letter-spacing: -.03em; text-wrap: balance; }
+    .message { margin: 0; font-size: 14px; line-height: 1.9; color: #b7aabe; overflow-wrap: anywhere; }
+    .action:empty { display: none; }
+    .return-link { display: flex; align-items: center; justify-content: center; gap: 14px; min-height: 50px; margin-top: 30px; padding: 13px 18px; border-radius: 7px; background: #c8b2f1; color: #271737; font-size: 14px; line-height: 1.6; font-weight: 600; text-decoration: none; transition: background-color 160ms; }
+    .return-link::after { content: ""; width: 8px; height: 8px; border-top: 1.5px solid; border-right: 1.5px solid; transform: rotate(45deg); flex-shrink: 0; }
+    .return-link:hover { background: #d7c5f6; }
+    .return-link:active { background: #b79cde; }
+    .return-link:focus-visible { outline: 2px solid #f4effa; outline-offset: 5px; }
+    .content-footer { display: flex; align-items: center; gap: 15px; margin-top: 48px; color: #887796; }
+    .content-footer::before, .content-footer::after { content: ""; height: 1px; flex: 1; background: #ffffff14; }
+    .content-footer svg { width: 21px; height: 21px; }
+    @media (max-width: 700px) {
+      body { padding: 20px; }
+      main { max-width: 440px; min-height: 0; grid-template-columns: 1fr; }
+      .scene { min-height: 97px; padding: 28px; }
+      .scene-copy, .astronaut, .orbit, .scene-caption { display: none; }
+      .planet { bottom: -665px; left: -180px; }
+      .brand { font-size: 16px; }
+      .content { padding: 36px 28px 32px; }
+      .symbol { width: 31px; height: 31px; margin-bottom: 20px; }
+      h1 { font-size: 26px; }
+      .content-footer { margin-top: 36px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .return-link { transition: none; } }
+  </style>
+</head>
+<body>
+  <main aria-labelledby="return-title">
+    <div class="scene">
+      <div class="stars" aria-hidden="true"></div>
+      <div class="brand"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M6 19.5C.5 14 7.5 5 13 10.5l6 11C24.5 27 31.5 18 26 12.5L20 9l-8 14-6-3.5Z" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>SpaceLess<span class="brand-app">App</span></span></div>
+      <div class="scene-copy" aria-hidden="true"><p>Xa bao nhiêu.<br><span>Gần bấy nhiêu.</span></p></div>
+      <div class="planet" aria-hidden="true"></div>
+      <div class="orbit" aria-hidden="true"></div>
+      <img class="astronaut" src="data:image/png;base64,{{ASTRONAUT}}" alt="" width="400" height="400">
+      <p class="scene-caption">Không khoảng cách. Chỉ kết nối.</p>
+    </div>
+    <div class="content">
+      <svg class="symbol" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M27 14.5a11 11 0 0 1-11 11h-4l-7 3v-7a11 11 0 0 1 11-18h1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="26" cy="5" r="3" fill="currentColor"/></svg>
+      <h1 id="return-title">{{TITLE}}</h1>
+      <p class="message">{{MESSAGE}}</p>
+      <div class="action">{{ACTION}}</div>
+      <div class="content-footer" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none"><path d="M6 19.5C.5 14 7.5 5 13 10.5l6 11C24.5 27 31.5 18 26 12.5L20 9l-8 14-6-3.5Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+    </div>
+  </main>
+</body>
+</html>
