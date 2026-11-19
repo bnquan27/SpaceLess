@@ -7,6 +7,7 @@ export type DesignDirection = 'orbit' | 'deep-space' | 'signal' | 'daylight'
 export interface SpaceLoginProps {
   direction?: DesignDirection
   onSubmit?: (data: { username: string; password: string; rememberMe: boolean }) => Promise<void> | void
+  googleAuth?: { enabled: boolean; message: string; onLogin: () => Promise<void>; onCancel: () => Promise<void> }
   className?: string
 }
 
@@ -37,17 +38,19 @@ function SpaceArtwork({ direction, paused }: { direction: DesignDirection; pause
   </div>
 }
 
-export function SpaceLogin({ direction = 'orbit', onSubmit, className }: SpaceLoginProps) {
+export function SpaceLogin({ direction = 'orbit', onSubmit, googleAuth, className }: SpaceLoginProps) {
   const id = useId()
   const [mode, setMode] = useState<'login' | 'reset' | 'register'>('login')
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [pending, setLoading] = useState<'password' | 'google' | null>(null)
+  const loading = pending !== null
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({})
   const usernameRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
   const [motionPaused, setMotionPaused] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const googleHelp = pending === 'google' ? 'Đang chờ Google trong trình duyệt. Hoàn tất đăng nhập trong 3 phút rồi quay lại ứng dụng.' : googleAuth && !googleAuth.enabled ? googleAuth.message : ''
   useEffect(() => {
     const preference = window.matchMedia('(prefers-reduced-motion: reduce)')
     const update = () => setMotionPaused(preference.matches)
@@ -71,13 +74,26 @@ export function SpaceLogin({ direction = 'orbit', onSubmit, className }: SpaceLo
     if (errors.username || errors.password) { (errors.username ? usernameRef : passwordRef).current?.focus(); return }
     if (mode === 'reset') { setNotice('Bản xem thử: yêu cầu khôi phục chưa được gửi. Khi kết nối máy chủ, bạn sẽ nhận được email nếu đã đăng ký.'); return }
     if (!onSubmit) { setNotice('Thông tin đã hợp lệ. Đây là bản xem thử giao diện, chưa kết nối đăng nhập.'); return }
-    setLoading(true)
+    setLoading('password')
     try {
       await onSubmit({ username: String(data.get('username')).trim(), password: String(data.get('password')), rememberMe: data.get('remember') === 'on' })
       setNotice('Đăng nhập thành công.')
-    } catch {
-      setError('Tài khoản hoặc mật khẩu không khớp. Vui lòng kiểm tra lại')
-    } finally { setLoading(false) }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Không thể đăng nhập. Vui lòng thử lại.')
+    } finally { setLoading(null) }
+  }
+
+  async function signInWithGoogle() {
+    if (!googleAuth?.enabled || loading) return
+    setError(''); setNotice(''); setLoading('google')
+    try { await googleAuth.onLogin() }
+    catch (error) { setError(error instanceof Error ? error.message : 'Không thể đăng nhập Google. Vui lòng thử lại.') }
+    finally { setLoading(null) }
+  }
+
+  async function cancelGoogle() {
+    try { await googleAuth?.onCancel() }
+    catch { setError('Chưa thể hủy đăng nhập. Vui lòng thử lại.') }
   }
 
   return <section className={cn('space-login', `direction-${direction}`, mode === 'register' && 'is-register', className)} data-motion-enabled={!motionPaused} aria-label={mode === 'register' ? 'Đăng ký SpaceLessApp' : 'Đăng nhập SpaceLessApp'}>
@@ -96,11 +112,19 @@ export function SpaceLogin({ direction = 'orbit', onSubmit, className }: SpaceLo
         <p className="form-intro">{mode === 'login' ? 'Đăng nhập và tiếp nối những câu chuyện.' : mode === 'reset' ? 'Nhập email đã đăng ký để khôi phục mật khẩu.' : 'Tạo tài khoản để bắt đầu những cuộc trò chuyện.'}</p>
         {mode === 'register' ? <SpaceSignup onBack={() => changeMode('login')} /> : <form onSubmit={submit} noValidate>
           <div className="field"><label htmlFor={`${id}-username`}>{mode === 'reset' ? 'Email' : 'Tên đăng nhập'}</label><input ref={usernameRef} id={`${id}-username`} key={mode} name={mode === 'reset' ? 'email' : 'username'} type={mode === 'reset' ? 'email' : 'text'} placeholder={mode === 'reset' ? 'ban@example.com' : 'Tên đăng nhập của bạn'} required maxLength={mode === 'reset' ? 100 : 50} autoComplete={mode === 'reset' ? 'email' : 'username'} disabled={loading} aria-invalid={!!fieldErrors.username} aria-describedby={fieldErrors.username ? `${id}-username-error` : undefined} onChange={() => { setError(''); setNotice(''); setFieldErrors(prev => ({ ...prev, username: undefined })) }} />{fieldErrors.username && <p id={`${id}-username-error`} className="field-error" role="alert">{fieldErrors.username}</p>}</div>
-          {mode === 'login' && <><div className="field"><label htmlFor={`${id}-password`}>Mật khẩu</label><div className="password-field"><input ref={passwordRef} id={`${id}-password`} name="password" type={showPassword ? 'text' : 'password'} placeholder="Nhập mật khẩu" autoComplete="current-password" required maxLength={128} disabled={loading} aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? `${id}-password-error` : undefined} onChange={() => { setError(''); setNotice(''); setFieldErrors(prev => ({ ...prev, password: undefined })) }} /><button type="button" className="password-toggle" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} aria-pressed={showPassword}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>{fieldErrors.password && <p id={`${id}-password-error`} className="field-error" role="alert">{fieldErrors.password}</p>}</div><div className="form-options"><label><input type="checkbox" name="remember" disabled={loading} />Ghi nhớ đăng nhập</label><button type="button" onClick={() => changeMode('reset')}>Quên mật khẩu?</button></div></>}
+          {mode === 'login' && <><div className="field"><label htmlFor={`${id}-password`}>Mật khẩu</label><div className="password-field"><input ref={passwordRef} id={`${id}-password`} name="password" type={showPassword ? 'text' : 'password'} placeholder="Nhập mật khẩu" autoComplete="current-password" required maxLength={128} disabled={loading} aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? `${id}-password-error` : undefined} onChange={() => { setError(''); setNotice(''); setFieldErrors(prev => ({ ...prev, password: undefined })) }} /><button type="button" className="password-toggle" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} aria-pressed={showPassword}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>{fieldErrors.password && <p id={`${id}-password-error`} className="field-error" role="alert">{fieldErrors.password}</p>}</div><div className="form-options">{!onSubmit && <label><input type="checkbox" name="remember" disabled={loading} />Ghi nhớ đăng nhập</label>}<button type="button" disabled={loading} onClick={() => changeMode('reset')}>Quên mật khẩu?</button></div></>}
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="login-submit" type="submit" disabled={loading}>{loading ? <><LoaderCircle className="spin" size={18} /> Đang đăng nhập…</> : <>{mode === 'login' ? 'Đăng nhập' : 'Gửi yêu cầu khôi phục'}<ArrowUpRight size={18} /></>}</button>
           {notice && <p className="form-notice" role="status">{notice}</p>}
-          {mode === 'login' && <p className="signup-prompt">Chưa có tài khoản? <button type="button" onClick={() => changeMode('register')}>Tạo tài khoản <ArrowUpRight size={13} /></button></p>}
+          {mode === 'login' && googleAuth && <div className="google-auth">
+            <div className="auth-divider"><span />hoặc<span /></div>
+            <button type="button" className="google-signin" disabled={!googleAuth.enabled || loading} onClick={signInWithGoogle} aria-describedby={googleHelp ? `${id}-google-help` : undefined}>
+              <img src="/assets/google-g.png" width="18" height="18" alt="" />Đăng nhập bằng Google
+            </button>
+            {googleHelp && <p id={`${id}-google-help`} className="auth-help" role="status">{googleHelp}</p>}
+            {pending === 'google' && <button type="button" className="auth-cancel" onClick={cancelGoogle}>Hủy đăng nhập Google</button>}
+          </div>}
+          {mode === 'login' && <p className="signup-prompt">Chưa có tài khoản? <button type="button" disabled={loading} onClick={() => changeMode('register')}>Tạo tài khoản <ArrowUpRight size={13} /></button></p>}
         </form>}
         <div className="form-bottom"><span /><SpaceLessMark /><span /></div><p className="form-bottom-copy">Cuộc trò chuyện hay bắt đầu từ đây.</p>
       </div>

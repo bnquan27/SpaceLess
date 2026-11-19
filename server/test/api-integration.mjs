@@ -218,7 +218,7 @@ try {
   api = `http://127.0.0.1:${apiPort}/api/v1`;
   gateway = `http://127.0.0.1:${gatewayPort}`;
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-    !/^(AWS_|S3_|SMTP_|LIVEKIT_|FILE_GATEWAY_|SERVER_|SNOWFLAKE_)/.test(key.toUpperCase())));
+    !/^(AWS_|S3_|SMTP_|LIVEKIT_|FILE_GATEWAY_|SERVER_|SNOWFLAKE_|GOOGLE_OAUTH_)/.test(key.toUpperCase())));
   Object.assign(env, {
     DATABASE_URL: database.href, APP_JWT_SECRET: secret(), RUST_LOG: 'info', RUST_LOG_STYLE: 'never',
     SERVER_BIND: `127.0.0.1:${apiPort}`, FILE_GATEWAY_BIND: `127.0.0.1:${gatewayPort}`,
@@ -249,18 +249,23 @@ try {
 }
 
 const routes = await registeredRoutes();
+const externalSuccessNotTested = {
+  'POST /auth/google/exchange': 'Requires a live Google authorization code. Disabled-provider handling runs here. Signed-token and provisioning fixtures run in the Rust auth::google tests.',
+};
 const coverage = Object.fromEntries([...routes, 'DELETE /channels/{channel_id}/members/me'].sort().map(route => [
   route, {
     attempted: cases.filter(test => test.requests.some(request => request.route === route)).map(test => test.name),
     successful: cases.filter(test => test.status === 'passed' && test.requests.some(request =>
       request.route === route && request.observed >= 101 && request.observed < 300)).map(test => test.name),
+    ...(externalSuccessNotTested[route] ? { externalSuccessNotTested: externalSuccessNotTested[route] } : {}),
   },
 ]));
-const uncovered = Object.entries(coverage).filter(([, row]) => row.successful.length === 0).map(([route]) => route);
+const uncovered = Object.entries(coverage).filter(([, row]) => row.successful.length === 0 && !row.externalSuccessNotTested).map(([route]) => route);
 const summary = { startedAt, finishedAt: new Date().toISOString(), node: process.version,
   registeredRoutes: routes.length, aliases: 1, passed: cases.filter(test => test.status === 'passed').length,
   failed: cases.filter(test => test.status === 'failed').length, requests: cases.reduce((count, test) => count + test.requests.length, 0),
-  covered: Object.keys(coverage).length - uncovered.length, uncovered, setupError };
+  covered: Object.values(coverage).filter(row => row.successful.length > 0).length,
+  externalSuccessNotTested, uncovered, setupError };
 console.log(JSON.stringify(summary));
 await writeFile(join(workDir, 'result.json'), JSON.stringify({ summary, coverage, cases }, null, 2) + '\n');
 if (setupError || summary.failed || uncovered.length) process.exitCode = 1;

@@ -26,6 +26,9 @@ use uuid::Uuid;
 
 use crate::{Actor, ApiError, AppState, Body, Id, Result, db, files, sync, voice};
 
+pub(crate) mod google;
+use google::exchange as google_exchange;
+
 const SESSION_SECONDS: i64 = 7 * 24 * 60 * 60;
 const FORGOT_WINDOW: i64 = 900;
 const DUMMY_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$ZHVtbXktc2FsdC1zcGFjZWxlc3M$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -35,6 +38,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
+        .route("/auth/google/exchange", post(google_exchange))
         .route("/auth/refresh", post(refresh))
         .route("/auth/logout", post(logout))
         .route("/auth/forgot-password", post(forgot_password))
@@ -358,7 +362,7 @@ async fn login(
     if !(12..=128).contains(&input.password.chars().count()) {
         return Err(invalid_credentials());
     }
-    let candidate = sqlx::query_as::<_, (i64, String)>(
+    let candidate = sqlx::query_as::<_, (i64, Option<String>)>(
         "SELECT id, password_hash FROM users WHERE identity_key(username) = identity_key($1)",
     )
     .bind(username)
@@ -366,11 +370,14 @@ async fn login(
     .await?;
     let hash = candidate
         .as_ref()
-        .map_or(DUMMY_HASH, |(_, hash)| hash.as_str());
+        .and_then(|(_, hash)| hash.as_deref())
+        .unwrap_or(DUMMY_HASH);
     if !verify_password(input.password, hash.into()).await? {
         return Err(invalid_credentials());
     }
-    let (user_id, password_hash) = candidate.ok_or_else(invalid_credentials)?;
+    let (user_id, password_hash) = candidate
+        .and_then(|(user_id, hash)| hash.map(|hash| (user_id, hash)))
+        .ok_or_else(invalid_credentials)?;
     let mut tx = state.pool.begin().await?;
     let (available, auth_version) = sqlx::query_as::<_, (bool, i64)>(
         "SELECT is_available, auth_version FROM users WHERE id = $1 AND password_hash = $2 FOR SHARE",
@@ -387,20 +394,29 @@ async fn login(
             "Tài khoản đã bị khóa.",
         ));
     }
+    let response = issue_session(&state, &mut tx, Id(user_id), auth_version).await?;
+    tx.commit().await?;
+    Ok(response)
+}
+
+async fn issue_session(
+    state: &AppState,
+    conn: &mut PgConnection,
+    user_id: Id,
+    auth_version: i64,
+) -> Result<axum::Json<Value>> {
     let sid = Uuid::new_v4();
     let expires_at = new_expiry()?;
     sqlx::query(
         "INSERT INTO auth_sessions (session_id, user_id, auth_version, expires_at) VALUES ($1, $2, $3, $4)",
     )
         .bind(sid)
-        .bind(user_id)
+        .bind(user_id.0)
         .bind(auth_version)
         .bind(expires_at)
-        .execute(&mut *tx)
+        .execute(conn)
         .await?;
-    let response = token_response(&state, Id(user_id), sid, auth_version, expires_at)?;
-    tx.commit().await?;
-    Ok(response)
+    token_response(state, user_id, sid, auth_version, expires_at)
 }
 
 async fn lock_account(conn: &mut PgConnection, user: Id) -> Result<()> {
@@ -551,7 +567,8 @@ async fn forgot_password(
     let mut tx = state.pool.begin().await?;
     let user = sqlx::query_as::<_, (i64, String)>(
         "SELECT u.id, u.username FROM users u JOIN user_details d ON d.user_id = u.id
-         WHERE identity_key(d.email) = identity_key($1) AND u.is_available FOR UPDATE OF u",
+         WHERE identity_key(d.email) = identity_key($1) AND u.is_available
+         AND u.password_hash IS NOT NULL FOR UPDATE OF u",
     )
     .bind(&email)
     .fetch_optional(&mut *tx)
@@ -598,7 +615,8 @@ async fn reset_password(
     let hash = Sha256::digest(token);
     let user = sqlx::query_scalar::<_, i64>(
         "SELECT t.user_id FROM password_reset_tokens t JOIN users u ON u.id = t.user_id \
-         WHERE t.token_hash = $1 AND NOT t.is_used AND t.expires_at > now() AND u.is_available",
+         WHERE t.token_hash = $1 AND NOT t.is_used AND t.expires_at > now() AND u.is_available
+         AND u.password_hash IS NOT NULL",
     )
     .bind(hash.as_slice())
     .fetch_optional(&state.pool)
@@ -610,7 +628,7 @@ async fn reset_password(
     lock_account(&mut tx, user).await?;
     let changed = sqlx::query(
         "UPDATE users u SET password_hash = $2, auth_version = auth_version + 1 \
-         WHERE id = $1 AND is_available AND EXISTS ( \
+         WHERE id = $1 AND is_available AND password_hash IS NOT NULL AND EXISTS ( \
              SELECT 1 FROM password_reset_tokens t WHERE t.token_hash = $3 AND t.user_id = u.id \
              AND NOT t.is_used AND t.expires_at > clock_timestamp() FOR UPDATE)",
     )
@@ -645,7 +663,7 @@ async fn reset_password(
 
 pub(crate) async fn profile(conn: &mut PgConnection, user: Id) -> Result<Value> {
     let (username, email, full_name, date_of_birth, phone, address, avatar_upload_id) =
-        sqlx::query_as::<_, (String, String, String, NaiveDate, String, Option<String>, Option<i64>)>(
+        sqlx::query_as::<_, (String, String, String, Option<NaiveDate>, Option<String>, Option<String>, Option<i64>)>(
             "SELECT u.username, d.email, u.full_name, d.date_of_birth, d.phone, d.address, d.avatar_upload_id \
              FROM users u JOIN user_details d ON d.user_id = u.id WHERE u.id = $1 AND u.is_available",
         )

@@ -19,6 +19,18 @@ export async function accounts({ run, observe, request, account, psql }) {
         return bytes.toString('hex');
     }
 
+    await run('Google exchange reports a disabled provider and rejects malformed input', async () => {
+        await request('POST', '/auth/google/exchange', {
+            body: { code: 'unused-fixture-code', code_verifier: 'a'.repeat(43), nonce: 'b'.repeat(43), loopback_port: 49152 },
+            status: 503, code: 'GOOGLE_NOT_CONFIGURED',
+        });
+        await request('POST', '/auth/google/exchange', {
+            body: { code: 'unused', code_verifier: 'short', nonce: 'b'.repeat(43), loopback_port: 49152 },
+            status: 400, code: 'INVALID_GOOGLE_EXCHANGE',
+        });
+        await request('POST', '/auth/google/exchange', { body: { id_token: 'untrusted' }, status: 400, code: 'INVALID_BODY' });
+    });
+
     await run('Registration returns a profile and username sign-in grants access to it', async () => {
         const owner = await account({ full_name: 'API Profile', date_of_birth: '1992-06-03', phone: '+84901234567' });
         assert.match(owner.id, /^[1-9]\d*$/);
