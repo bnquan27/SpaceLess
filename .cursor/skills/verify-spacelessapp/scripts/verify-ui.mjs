@@ -12,9 +12,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
 const [surface, feature, width = '1280'] = process.argv.slice(2);
-const routes = { 'sign-in': '/', 'sign-up': '/', recovery: '/', design: '/design' };
+const routes = { 'sign-in': '/', 'sign-up': '/', recovery: '/', workspace: '/', design: '/design' };
 assert(['desktop', 'web'].includes(surface) && Object.hasOwn(routes, feature),
-  'Usage: node verify-ui.mjs <desktop|web> <sign-in|sign-up|recovery|design> [web width]');
+  'Usage: node verify-ui.mjs <desktop|web> <sign-in|sign-up|recovery|workspace|design> [web width]');
 assert(surface !== 'desktop' || (feature !== 'design' && width === '1280'), 'Design and custom viewports use web mode');
 assert(/^\d+$/.test(width) && Number(width) >= 320 && Number(width) <= 2400, 'Web width must be 320 to 2400 pixels');
 
@@ -44,6 +44,7 @@ let failure;
 const button = name => page.getByRole('button', { name, exact: true });
 const field = name => page.getByLabel(name, { exact: true });
 const textVisible = text => page.getByText(text, { exact: true }).waitFor({ state: 'visible' });
+const headingVisible = name => page.getByRole('heading', { name, exact: true }).waitFor({ state: 'visible' });
 const capture = async name => {
   await page.screenshot({ path: join(evidence, `${name}.png`), animations: 'disabled', fullPage: surface === 'web' });
   await writeFile(join(evidence, `${name}.aria.txt`), await page.locator('body').ariaSnapshot());
@@ -86,8 +87,11 @@ try {
     await page.goto(origin + routes[feature], { waitUntil: 'domcontentloaded', timeout: 12_000 });
   }
   page.setDefaultTimeout(8_000);
-  const heading = feature === 'design' ? 'Chọn một cách kết nối.' : 'Kết nối lại nhé.';
-  await page.getByRole('heading', { name: heading, exact: true }).waitFor({ state: 'visible' });
+  if (feature === 'design') {
+    await headingVisible('Chọn một cách kết nối.');
+  } else {
+    await headingVisible('Chào mừng trở lại, Nguyễn Minh!');
+  }
   assert(surface === 'web' || new URL(page.url()).hostname === 'tauri.localhost', `Unexpected WebView2 document ${page.url()}`);
   result.steps.push('Doctor saw the expected heading on the owned instance.');
   page.on('pageerror', error => result.pageErrors.push(error.message));
@@ -97,6 +101,16 @@ try {
       result.network.push({ method: request.method(), path: `${url.origin}${url.pathname}` });
     }
   });
+  page.on('websocket', socket => {
+    const url = new URL(socket.url());
+    result.network.push({ method: 'WebSocket', path: `${url.origin}${url.pathname}` });
+  });
+  if (['sign-in', 'sign-up', 'recovery'].includes(feature)) {
+    await page.getByTitle('Đăng xuất', { exact: true }).click();
+    await headingVisible('Kết nối lại nhé.');
+    assert(await page.locator('.space-login.direction-orbit').isVisible(), 'The app form should use Orbit');
+    result.steps.push('Demo workspace logout opened Orbit sign-in.');
+  }
   await capture('before');
 
   if (feature === 'sign-in') {
@@ -113,8 +127,8 @@ try {
     assert.equal(await field('Mật khẩu').getAttribute('type'), 'password');
     await page.getByRole('checkbox', { name: 'Ghi nhớ đăng nhập' }).check();
     await field('Mật khẩu').press('Enter');
-    await textVisible('Thông tin đã hợp lệ. Đây là bản xem thử giao diện, chưa kết nối đăng nhập.');
-    result.steps.push('Empty submit focused username. Password toggle, checkbox and keyboard submit worked.');
+    await headingVisible('Chào mừng trở lại, orbit_probe!');
+    result.steps.push('Empty submit focused username. Password toggle and checkbox worked. Enter switched to the demo workspace under the entered username.');
   } else if (feature === 'sign-up') {
     await button('Tạo tài khoản').click();
     await button('Tạo tài khoản').click();
@@ -144,7 +158,50 @@ try {
     await field('Email').fill('orbit@example.test');
     await button('Gửi yêu cầu khôi phục').click();
     await textVisible('Bản xem thử: yêu cầu khôi phục chưa được gửi. Khi kết nối máy chủ, bạn sẽ nhận được email nếu đã đăng ký.');
-    result.steps.push('Recovery rejected invalid email and displayed its preview status for valid email.');
+    await capture('preview');
+    await button('Quay lại đăng nhập').click();
+    await headingVisible('Kết nối lại nhé.');
+    result.steps.push('Recovery rejected invalid email, displayed its unsent status, and returned to sign-in.');
+  } else if (feature === 'workspace') {
+    await textVisible('Dữ liệu mẫu');
+    const notifications = page.getByTitle('Thông báo', { exact: true });
+    await notifications.click();
+    await textVisible('Thông báo mới nhất');
+    await notifications.click();
+    await button('Mở máy chủ Nhóm Đồ Án - UI/UX').click();
+    await headingVisible('Nhóm Đồ Án - UI/UX');
+    await button('Hồ sơ & Cài đặt').click();
+    await headingVisible('Cài đặt Không gian làm việc');
+    await button('Thành viên & Phân quyền').click();
+    await headingVisible('Thành viên & Phân quyền');
+    await capture('roles');
+    await button('Đóng').click();
+    await button('Mở kênh chung').click();
+    await field('Nhắn tin tới #chung').fill('Tin nhắn mẫu trong kênh');
+    await button('Gửi').click();
+    await page.getByText('Tin nhắn mẫu trong kênh', { exact: true }).scrollIntoViewIfNeeded();
+    await capture('channel');
+    await page.getByTitle('Quay lại trang trước', { exact: true }).click();
+    await button('Tham gia').click();
+    await button('Tắt mic').click();
+    assert.equal(await button('Tắt mic').getAttribute('aria-pressed'), 'true');
+    await button('Camera').click();
+    assert.equal(await button('Camera').getAttribute('aria-pressed'), 'true');
+    await button('Mở màn hình chia sẻ').click();
+    await textVisible('Đang chia sẻ ứng dụng: Visual Studio Code');
+    await button('Tập trung').first().click();
+    await button('Thu nhỏ').waitFor();
+    await capture('screen-share');
+    await button('Máy chủ & Tin nhắn').click();
+    await button('Tin nhắn trực tiếp').click();
+    const online = page.getByRole('button', { name: /^Trực tuyến \(/ });
+    await online.click();
+    assert.equal(await online.getAttribute('aria-pressed'), 'true');
+    await field('Nhắn tin riêng cho Hoàng Đạt').fill('Tin nhắn riêng mẫu');
+    await button('Gửi').click();
+    await page.getByText('Tin nhắn riêng mẫu', { exact: true }).scrollIntoViewIfNeeded();
+    await capture('direct-message');
+    result.steps.push('Opened sample notifications and roles, posted local channel and direct messages, toggled voice controls, and focused a sample screen share.');
   } else {
     await page.getByRole('button', { name: /^Signal/ }).click();
     await button('Xem trên điện thoại').click();
@@ -159,11 +216,19 @@ try {
     assert.match(await readFile(join(evidence, download.suggestedFilename()), 'utf8'), /Hướng thiết kế Signal/);
     await capture('selection');
     await page.reload();
-    await page.getByRole('heading', { name: 'Signal', exact: true }).waitFor();
-    await page.goto(origin);
-    await page.getByRole('heading', { name: 'Kết nối lại nhé.', exact: true }).waitFor();
-    assert(await page.locator('.space-login.direction-orbit').isVisible(), 'Saving a comparison must leave / on Orbit');
-    result.steps.push('Signal persisted in /design, exported a note, and / still used Orbit.');
+    await headingVisible('Signal');
+    await page.getByRole('button', { name: /^Orbit/ }).click();
+    await field('Tên đăng nhập').fill('orbit_probe');
+    await field('Mật khẩu').fill('synthetic-password');
+    await button('Đăng nhập').click();
+    await textVisible('Thông tin đã hợp lệ. Đây là bản xem thử giao diện, chưa kết nối đăng nhập.');
+    await capture('embedded-sign-in');
+    await page.getByRole('link', { name: 'SpaceLessApp — Trang chọn thiết kế' }).click();
+    await headingVisible('Chào mừng trở lại, Nguyễn Minh!');
+    await page.getByTitle('Đăng xuất', { exact: true }).click();
+    await headingVisible('Kết nối lại nhé.');
+    assert(await page.locator('.space-login.direction-orbit').isVisible(), 'Saving a comparison must leave the app form on Orbit');
+    result.steps.push('Signal persisted in /design and exported a note. The embedded form reported disconnected sign-in, and the app form still used Orbit after demo logout.');
   }
   await capture('after');
   assert.deepEqual(result.network, [], 'Preview must not submit network requests');

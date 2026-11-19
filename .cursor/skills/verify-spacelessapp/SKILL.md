@@ -5,7 +5,7 @@ description: Verify SpaceLessApp on Windows through its Tauri window, responsive
 
 # Verify SpaceLessApp
 
-Run from the repository root in PowerShell 7. Read the relevant journey in [the feature map](features/README.md) before driving it. The Windows Tauri window is the primary user surface. The Vite preview runs the same React UI at adjustable widths. The Rust API runs independently. Orbit sign-in, sign-up and recovery currently validate locally and display preview status.
+Run from the repository root in PowerShell 7. The Windows Tauri window is the primary user surface. The Vite preview runs the same React UI at adjustable widths. Both open the sample workspace. Use **Đăng xuất** to reach the local Orbit forms. The Rust API runs independently. See [the feature map](features/README.md).
 
 ## Launch
 
@@ -26,13 +26,15 @@ node (Join-Path $env:SPACELESS_PLAYWRIGHT 'cli.js') install chromium --only-shel
 
 The UI helper launches the release executable or serves `dist/` with `vite preview` on a fresh loopback port. It creates a temporary WebView2 data directory for desktop or a fresh browser context for web. It drives one feature, captures evidence and tears down the instance in one command.
 
-For the API, follow [the server runbook](../../../docs/rust-server-run.md) with a dedicated, empty PostgreSQL database that supports `und-x-icu`. Set `DATABASE_URL` to that database, generate a fresh `APP_JWT_SECRET` and set `SERVER_BIND` to an unused loopback port. Start `cargo run --manifest-path server/Cargo.toml --locked` in its own terminal. It applies migrations before printing `SpaceLess server ready`. The API smoke script registers its own fixture accounts. Two API runs need separate databases as well as separate ports because each API takes a database lease.
+For the integration suite, follow [the API journey](features/server-api.md). It starts the API and gateway against an empty test database.
+
+For the standalone REST and WebSocket smoke test, follow [the server runbook](../../../docs/rust-server-run.md) with a dedicated, empty PostgreSQL database that supports `und-x-icu`. Set `DATABASE_URL` to that database, generate a fresh `APP_JWT_SECRET`, and set `SERVER_BIND` to an unused loopback port. Run `cargo run --manifest-path server/Cargo.toml --locked` in its own terminal. It applies migrations before printing `SpaceLess server ready`. Concurrent API runs need separate ports and databases because each API takes a database lease.
 
 ## Doctor
 
 The UI helper always checks its child is alive, probes `/json/version` for WebView2 or `/` for Vite preview and waits for the expected heading in the launched document. For desktop it also verifies the WebView2 document is on `tauri.localhost` and records the binary SHA-256. If a journey fails, inspect `result.json` and `process.log` before retrying.
 
-For the API, verify the test database and bind address in the launch terminal, then run this read-only probe. Expect `401` with `UNAUTHORIZED`. The smoke script then proves auth by registering, logging in and calling protected routes.
+Before running the standalone API smoke test, verify the test database and bind address in the launch terminal. Run this read-only probe and expect `401` with `UNAUTHORIZED`. The integration suite runs its own readiness probes.
 
 ```powershell
 $baseUrl = "http://$env:SERVER_BIND/api/v1"
@@ -49,7 +51,7 @@ node .cursor/skills/verify-spacelessapp/scripts/verify-ui.mjs desktop sign-in
 node .cursor/skills/verify-spacelessapp/scripts/verify-ui.mjs web sign-in 390
 ```
 
-Replace `sign-in` with `sign-up` or `recovery` to test those forms. Use `web design` for the comparison room. The optional web width defaults to 1280. For API scenarios use [the API journey](features/server-api.md). When reproducing a new issue, use labels and roles from the feature map and exercise the real entry point. Run the packaged window for native regressions and use the browser for narrow layouts.
+Replace `sign-in` with `sign-up`, `recovery`, or `workspace` to test those journeys. Use `web design` for the comparison room. The optional web width defaults to 1280. Run the packaged window for native regressions and use the browser for narrow layouts. For REST, WebSocket, and local provider fixtures, use [the API journey](features/server-api.md).
 
 ## Evidence
 
@@ -66,3 +68,4 @@ The UI helper closes its own Playwright connection and child process and removes
 - `scripts/verify-ui.mjs` runs the commands under **Drive**.
 - `server/tests/api-smoke.ps1` drives the REST and WebSocket workflows listed in the API journey.
 - `server/tests/voice-smoke.mjs` drives the API against a local LiveKit protocol fixture. See the server runbook for its command.
+- `server/test/api-integration.mjs` starts its own API, gateway, and provider fixtures. See the API journey for its command and database requirements.

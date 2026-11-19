@@ -7,7 +7,7 @@
 
 ## How to get to it (user POV)
 
-Choose `Tạo tài khoản` below `Đăng nhập` on the startup screen or in the comparison preview.
+Choose **Tạo tài khoản** below **Đăng nhập** after leaving the sample workspace with **Đăng xuất**. The comparison preview also offers **Tạo tài khoản**.
 
 ## Driving it with Playwright
 
