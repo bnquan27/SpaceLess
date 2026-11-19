@@ -8,11 +8,13 @@
 
 ## How to get to it (user POV)
 
-Open web `/design`. The public startup route `/` opens Orbit sign-in.
+Open web `/design`. On `/`, choose **Đăng xuất** from the sample workspace to see the app's Orbit sign-in form.
 
 ## Driving it with Playwright
 
-Run `node .cursor/skills/verify-spacelessapp/scripts/verify-ui.mjs web design`. The helper chooses `Signal`, switches to `Xem trên điện thoại`, saves via `Chọn hướng này` and downloads `spaceless-signal.md`. It reloads `/design` to prove persistence, then checks `/` still renders Orbit. When changing navigation, also drive `Hướng thiết kế trước`, `Hướng thiết kế tiếp theo`, `Mở rộng xem trước` and `Thu nhỏ xem trước`. Verify the selected button's `aria-pressed` state and the preview's direction after each action.
+Run `node .cursor/skills/verify-spacelessapp/scripts/verify-ui.mjs web design`. The helper chooses **Signal**, switches to **Xem trên điện thoại**, saves with **Chọn hướng này**, and downloads `spaceless-signal.md`. It checks that Signal survives reload and that the embedded Orbit form shows disconnected sign-in status. It returns to `/`, leaves the sample workspace, and checks that the app form still uses Orbit.
+
+When changing navigation, also use **Hướng thiết kế trước**, **Hướng thiết kế tiếp theo**, **Mở rộng xem trước**, and **Thu nhỏ xem trước**. Check the selected direction button's `aria-pressed` state and the visible preview.
 
 ## Gotchas
 

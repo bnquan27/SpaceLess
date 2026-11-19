@@ -8,7 +8,22 @@
 
 ## How to get to it (user POV)
 
-A client uses `/api/v1/auth/register`, `/api/v1/auth/login` and `/api/v1/bootstrap`. It sends the issued Bearer to protected REST endpoints and to `/api/v1/ws` during the WebSocket upgrade. The desktop preview currently uses its local forms.
+A client uses `/api/v1/auth/register`, `/api/v1/auth/login` and `/api/v1/bootstrap`. It sends the issued Bearer to protected REST endpoints and to `/api/v1/ws` during the WebSocket upgrade. The desktop preview uses local forms and sample data.
+
+## Drive the integration suite
+
+Build the server and set `DATABASE_URL` to a fresh, empty PostgreSQL database on `127.0.0.1`. Use a name beginning with `spaceless_test_` and a PostgreSQL build with the `und-x-icu` collation. Use Node.js 24 and make `psql.exe` available.
+
+```powershell
+cargo build --manifest-path server/Cargo.toml --locked
+$psql = (Get-Command psql.exe).Source
+$evidence = Join-Path 'docs/qa' ('api-integration-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+node server/test/api-integration.mjs server/target/debug/spaceless-server.exe $psql $evidence
+```
+
+The runner starts the API, gateway, and local S3 and LiveKit fixtures. It probes the API and gateway for `401 UNAUTHORIZED` before the first case. Read the case results and route coverage in `result.json`. Check `summary.failed`, `summary.uncovered`, and any `summary.setupError`. The runner stops its processes and fixtures. Remove the dedicated database or cluster after saving the evidence.
+
+Use a real SMTP relay to test delivery, a live S3-compatible service to test signature enforcement, and LiveKit Cloud clients to test media transport and cloud token revocation. See [the API integration report](../../../../docs/server-api-test-report.md).
 
 ## Driving it with REST and WebSocket
 
