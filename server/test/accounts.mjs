@@ -3,13 +3,6 @@ import { createHash, randomBytes } from 'node:crypto';
 
 export async function accounts({ run, observe, request, account, psql }) {
     const login = ({ username, password }) => request('POST', '/auth/login', { body: { username, password } });
-    const requestFriend = async (sender, recipient) => (await request('POST', '/friends/requests', {
-        token: sender.token, body: { target_user_id: recipient.id }, status: 201,
-    })).body;
-    const resolveFriend = async (recipient, friendRequest, decision) => (await request('PATCH', '/friends/requests/{request_id}', {
-        token: recipient.token, params: { request_id: friendRequest.request_id }, body: { decision },
-    })).body;
-
     async function resetFixture(userId, minutes = 15) {
         assert.match(userId, /^[1-9]\d*$/);
         const bytes = randomBytes(32);
@@ -154,6 +147,17 @@ export async function accounts({ run, observe, request, account, psql }) {
         const { body: signedIn } = await login({ username, password: new_password });
         assert.equal((await request('GET', '/users/me', { token: signedIn.access_token })).body.user_id, owner.id);
     });
+
+    await social({ run, request, account });
+}
+
+export async function social({ run, request, account }) {
+    const requestFriend = async (sender, recipient) => (await request('POST', '/friends/requests', {
+        token: sender.token, body: { target_user_id: recipient.id }, status: 201,
+    })).body;
+    const resolveFriend = async (recipient, friendRequest, decision) => (await request('PATCH', '/friends/requests/{request_id}', {
+        token: recipient.token, params: { request_id: friendRequest.request_id }, body: { decision },
+    })).body;
 
     await run('User search paginates public profiles using decimal string cursors', async () => {
         const name = `Search_${randomBytes(8).toString('hex')}`;
