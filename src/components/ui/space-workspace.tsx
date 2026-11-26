@@ -3,11 +3,9 @@ import {
   Bell,
   MessageSquare,
   ChevronDown,
-  ChevronUp,
   Search,
   Users,
   LayoutGrid,
-  LogOut,
   Compass,
   Plus,
   X,
@@ -35,8 +33,11 @@ import { DirectMessageView } from "./workspace/direct-message-view";
 import { VoiceStageView } from "./workspace/voice-stage-view";
 import { ScreenShareView } from "./workspace/screen-share-view";
 import { AdminRolesView } from "./workspace/admin-roles-view";
+import { UserSettingsView } from "./workspace/user-settings-view";
 import { HomeHubView, HomeServerItem } from "./workspace/home-hub-view";
 import { PreviewAvatar, PreviewServerPhoto } from "./workspace/preview-images";
+import { ShareVideo } from "./workspace/share-video";
+import { useScreenShare } from "@/lib/use-screen-share";
 
 export interface SpaceWorkspaceProps {
   currentUser?: string;
@@ -66,9 +67,11 @@ export function SpaceWorkspace({
   // 1. VỊ TRÍ ĐẦU TIÊN KHI VÀO APP LÀ SẢNH CHỜ (isInLobby = true)
   const [isInLobby, setIsInLobby] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
-  // Lưu máy chủ đang truy cập (kể cả khi bấm sang DM thì máy chủ này vẫn hiển thị trên Topbar)
+  // Lưu kênh đang truy cập (kể cả khi bấm sang DM thì kênh này vẫn hiển thị trên Topbar)
   const [activeServerId, setActiveServerId] = useState<string>("uiux");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [userSettingsOpen, setUserSettingsOpen] = useState(false);
+  const [dmFriendName, setDmFriendName] = useState<string | undefined>();
+  const [recentServerIds, setRecentServerIds] = useState<string[]>([]);
 
   // Lịch sử điều hướng để nút Quay lại (Back) trên Topbar hoạt động mượt mà
   const [navHistory, setNavHistory] = useState<
@@ -76,7 +79,6 @@ export function SpaceWorkspace({
   >([]);
 
   // State ẩn/hiện thanh Dock bằng nút mũi tên (Mặc định ẩn để không che thanh chat)
-  const [dockExpanded, setDockExpanded] = useState<boolean>(false);
 
   const [joinedServers, setJoinedServers] = useState<ServerExtendedItem[]>([
     {
@@ -181,6 +183,9 @@ export function SpaceWorkspace({
     useState<string>("chung");
   const [selectedVoiceRoom, setSelectedVoiceRoom] =
     useState<string>("Phòng Họp Nhóm");
+  const sharing = useScreenShare(activeServerId, selectedVoiceRoom);
+  const [viewedShareOwner, setViewedShareOwner] = useState(currentUser);
+  const screenShares = sharing.stream ? [{ owner: currentUser, stream: sharing.stream, isLocal: true }] : [];
 
   // States điều khiển Dropdown & Popup
   const [serverDropdownOpen, setServerDropdownOpen] = useState(false);
@@ -310,6 +315,7 @@ export function SpaceWorkspace({
       ...prev,
       { isInLobby, tab: activeTab, serverId: activeServerId },
     ]);
+    if (!nextInLobby && nextTab !== "dm") setRecentServerIds(prev => [nextServerId, ...prev.filter(id => id !== nextServerId)].slice(0, 4));
     setIsInLobby(nextInLobby);
     setActiveTab(nextTab);
     setActiveServerId(nextServerId);
@@ -473,19 +479,19 @@ export function SpaceWorkspace({
       )}
 
       {/* 1. TOP NAVIGATION BAR */}
-      <header className="min-h-14 px-3 sm:px-6 border-b border-white/10 bg-[#120f19] flex items-center justify-between gap-2 sm:gap-4 shrink-0 z-30">
+      <header className="min-h-14 px-3 sm:px-6 border-b border-white/10 bg-[#120f19] flex items-center justify-between gap-2 sm:gap-4 shrink-0 z-50">
         <div className="flex min-w-0 items-center gap-2.5">
           {/* NÚT QUAY LẠI TRANG TRƯỚC PHẦN CÀI ĐẶT MÁY CHỦ */}
-          <button
+          {!isInLobby && <button
             onClick={handleGoBack}
             title="Quay lại trang trước"
             className="p-2 rounded-xl bg-[#1c172c] hover:bg-[#261e3a] border border-white/10 text-[#b7aabe] hover:text-[#f4effa] transition"
           >
             <ArrowLeft className="w-4 h-4 shrink-0" />
-          </button>
+          </button>}
 
-          {/* NÚT TÊN MÁY CHỦ HIỆN TẠI (Luôn hiện máy chủ đang truy cập kể cả khi bấm sang DM) */}
-          <div className="relative min-w-0" ref={dropdownRef}>
+          {/* NÚT TÊN MÁY CHỦ HIỆN TẠI (Luôn hiện kênh đang truy cập kể cả khi bấm sang DM) */}
+          <div className={isInLobby ? "hidden" : "relative min-w-0 hidden sm:block"} ref={dropdownRef}>
             <button
               onClick={() => setServerDropdownOpen((v) => !v)}
               aria-expanded={serverDropdownOpen}
@@ -530,7 +536,7 @@ export function SpaceWorkspace({
                   }}
                   className="w-full px-3 py-2.5 rounded-xl text-xs font-semibold text-[#c8b2f1] hover:bg-[#c8b2f1] hover:text-[#271737] flex items-center justify-between transition"
                 >
-                  <span>Mời vào Máy chủ</span>
+                  <span>Mời vào Kênh</span>
                   <UserPlus className="w-4 h-4 shrink-0" />
                 </button>
 
@@ -542,7 +548,7 @@ export function SpaceWorkspace({
                   }}
                   className="w-full px-3 py-2.5 rounded-xl text-xs font-medium text-[#f4effa] hover:bg-white/10 flex items-center justify-between transition"
                 >
-                  <span>Cài đặt máy chủ</span>
+                  <span>Cài đặt kênh</span>
                   <Settings className="w-4 h-4 text-[#b7aabe] shrink-0" />
                 </button>
 
@@ -605,7 +611,7 @@ export function SpaceWorkspace({
                   }}
                   className="w-full px-3 py-2.5 rounded-xl text-xs font-semibold text-red-400 hover:bg-red-500/20 hover:text-red-300 flex items-center justify-between transition"
                 >
-                  <span>Rời khỏi máy chủ</span>
+                  <span>Rời khỏi kênh</span>
                   <LeaveIcon className="w-4 h-4 shrink-0" />
                 </button>
 
@@ -616,7 +622,7 @@ export function SpaceWorkspace({
                   className="w-full px-3 py-2 rounded-xl text-xs font-medium text-[#b7aabe] hover:bg-white/10 hover:text-[#f4effa] flex items-center justify-between transition"
                 >
                   <span>
-                    {copiedServerId ? "Đã sao chép ID!" : "Sao chép ID Máy chủ"}
+                    {copiedServerId ? "Đã sao chép ID!" : "Sao chép ID Kênh"}
                   </span>
                   {copiedServerId ? (
                     <Check className="w-4 h-4 text-[#a2d9d3] shrink-0" />
@@ -628,7 +634,7 @@ export function SpaceWorkspace({
             )}
           </div>
 
-          <div className="hidden lg:flex items-center gap-2 text-xs text-[#b7aabe]">
+          <div className="hidden lg:flex items-center gap-2 text-sm text-[#d4c9dd]">
             <button
               onClick={() =>
                 navigateWithHistory(true, "overview", activeServerId)
@@ -661,24 +667,84 @@ export function SpaceWorkspace({
               </>
             )}
           </div>
+          <span className="hidden sm:block lg:hidden whitespace-nowrap text-sm font-semibold text-[#e9dff5]">{userSettingsOpen ? "Cài đặt" : isInLobby ? "Sảnh chờ" : activeTab === "dm" ? "Tin nhắn" : "Kênh & Phòng"}</span>
         </div>
 
-        {/* Global Search Bar */}
-        <div className="relative flex-1 min-w-0 max-w-md hidden md:block">
-          <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#b7aabe]" />
-          <input
-            type="text"
-            value={searchQuery}
-            aria-label="Tìm kiếm máy chủ, kênh, tin nhắn hoặc bạn bè"
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm kiếm máy chủ, kênh, tin nhắn hoặc bạn bè..."
-            className="w-full min-h-9 bg-[#1c172c]/90 border border-white/10 rounded-xl pl-9 pr-4 py-1.5 text-sm text-[#f4effa] placeholder-[#b7aabe] focus:border-[#c8b2f1] transition"
-          />
-        </div>
+        <nav aria-label="Điều hướng kênh và tin nhắn" className="min-w-0 flex-1 flex justify-center">
+          <div className="flex max-w-full items-center gap-1.5 overflow-x-auto px-1 py-2">
+            {/* ĐẦU THANH DOCK: ICON TIN NHẮN TRỰC TIẾP (DM) */}
+            <button
+              onClick={() => {
+                navigateWithHistory(false, "dm", activeServerId);
+              }}
+              title="Tin nhắn trực tiếp (DM)"
+              aria-label="Tin nhắn trực tiếp"
+              className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition relative ${
+                !isInLobby && activeTab === "dm"
+                  ? "bg-[#c8b2f1] text-[#271737] shadow-[0_0_15px_rgba(200,178,241,0.45)]"
+                  : "bg-[#1c172c] hover:bg-[#261e3a] text-[#c8b2f1] border border-white/10"
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 shrink-0" />
+              <span className="w-4 h-4 rounded-full bg-[#a2d9d3] text-[#15121d] text-xs font-bold grid place-items-center absolute -top-1 -right-1 border border-[#120f19]">
+                2
+              </span>
+            </button>
+
+            <div className="w-[1px] h-6 bg-white/15 mx-0.5" />
+
+            {/* DANH SÁCH MÁY CHỦ (Khi đang ở DM, kênh đang truy cập vẫn có viền sáng báo hiệu) */}
+            {joinedServers.map((srv) => {
+              const Icon = srv.icon;
+              const isSelectedServer = activeServerId === srv.id;
+              const isViewingServer =
+                isSelectedServer && !isInLobby && activeTab !== "dm";
+              return (
+                <button
+                  key={srv.id}
+                  onClick={() => {
+                    navigateWithHistory(false, "overview", srv.id);
+                      }}
+                  title={`Kênh: ${srv.name}`}
+                  className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-bold text-xs transition relative ${
+                    isViewingServer
+                      ? "bg-[#c8b2f1] text-[#271737] shadow-[0_0_15px_rgba(200,178,241,0.4)]"
+                      : isSelectedServer
+                        ? "bg-[#261e3a] text-[#c8b2f1] border-2 border-[#c8b2f1]"
+                        : "bg-[#1c172c] hover:bg-[#261e3a] text-[#f4effa] border border-white/10"
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <PreviewServerPhoto id={srv.id} />
+                  {srv.onlineDot && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#a2d9d3] border-2 border-[#120f19] absolute -top-0.5 -right-0.5" />
+                  )}
+                </button>
+              );
+            })}
+
+            <div className="w-[1px] h-6 bg-white/15 mx-0.5" />
+
+            {/* Nút về Sảnh chờ */}
+            <button
+              onClick={() => {
+                navigateWithHistory(true, "overview", activeServerId);
+              }}
+              title="Sảnh chờ"
+              className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center transition ${
+                isInLobby
+                  ? "bg-[#a2d9d3] text-[#15121d]"
+                  : "bg-[#1c172c]/70 hover:bg-[#1c172c] text-[#b7aabe] hover:text-[#f4effa]"
+              }`}
+            >
+              <Compass className="w-4 h-4 shrink-0" />
+            </button>
+          </div>
+        </nav>
 
         {/* Right Controls */}
         <div className="flex shrink-0 items-center gap-2">
-          <button
+          {!isInLobby && <button
             onClick={toggleRoleForDemo}
             title="Chuyển thử nghiệm Chủ kênh / Thành viên"
             className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition ${
@@ -698,7 +764,7 @@ export function SpaceWorkspace({
                 <span>Thành viên</span>
               </>
             )}
-          </button>
+          </button>}
 
           {/* NÚT CHUÔNG THÔNG BÁO + THANH THẢ XUỐNG CỠ BÉ */}
           <div className="relative" ref={notifRef}>
@@ -776,40 +842,25 @@ export function SpaceWorkspace({
             )}
           </div>
 
-          <div className="relative ml-1">
-            <span
-              title={currentUser}
-              role="img"
-              aria-label={`Ảnh đại diện của ${currentUser}`}
-              className="relative w-8 h-8 rounded-full bg-[#f4effa] text-[#15121d] flex items-center justify-center text-xs font-bold"
-            >
-              <PreviewAvatar name={currentUser} initials={currentUser.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()} />
-            </span>
-            <span className="w-2.5 h-2.5 rounded-full bg-[#a2d9d3] border-2 border-[#120f19] absolute -bottom-0.5 -right-0.5" />
-          </div>
-
-          {onLogout && (
-            <button
-              onClick={onLogout}
-              title="Đăng xuất"
-              className="p-2 ml-1 rounded-xl bg-white/5 hover:bg-red-500/20 text-[#b7aabe] hover:text-red-300 border border-white/10 transition"
-            >
-              <LogOut size={14} />
-            </button>
-          )}
+          <button type="button" onClick={() => setUserSettingsOpen(true)} aria-label={`Cài đặt người dùng ${currentUser}`} title="Cài đặt người dùng" aria-haspopup="dialog" className="relative ml-1 block h-9 w-9 shrink-0 rounded-full bg-[#30243f] hover:ring-2 hover:ring-[#c8b2f1]">
+            <PreviewAvatar name={currentUser} initials={currentUser.slice(0, 2)} />
+          </button>
         </div>
       </header>
+
+      {userSettingsOpen && <UserSettingsView currentUser={currentUser} onClose={() => setUserSettingsOpen(false)} onLogout={onLogout} />}
 
       {/* 2. DYNAMIC PAGE VIEW */}
       <div className="flex-1 flex flex-col overflow-hidden relative">
         {isInLobby ? (
           <HomeHubView
             currentUser={currentUser}
-            servers={joinedServers}
+            servers={recentServerIds.flatMap(id => joinedServers.filter(server => server.id === id))}
             onSelectServer={(srvId) => {
               navigateWithHistory(false, "overview", srvId);
             }}
-            onOpenDm={() => {
+            onOpenDm={(name) => {
+              setDmFriendName(name);
               navigateWithHistory(false, "dm", activeServerId);
             }}
             onQuickJoinVoice={(srvId, roomName) => {
@@ -820,6 +871,7 @@ export function SpaceWorkspace({
         ) : activeTab === "dm" ? (
           <DirectMessageView
             currentUser={currentUser}
+            initialFriendName={dmFriendName}
             onNavigate={(tab) =>
               navigateWithHistory(false, tab, activeServerId)
             }
@@ -869,6 +921,19 @@ export function SpaceWorkspace({
             {activeTab === "voice" && (
               <VoiceStageView
                 currentUser={currentUser}
+                onOpenInviteModal={() => setInviteModalOpen(true)}
+                screenShares={screenShares}
+                onShareStarted={stream => {
+                  sharing.start(stream);
+                  setViewedShareOwner(currentUser);
+                  navigateWithHistory(false, "screen", activeServerId);
+                }}
+                onWatchShare={owner => {
+                  setViewedShareOwner(owner);
+                  navigateWithHistory(false, "screen", activeServerId);
+                }}
+                onStopSharing={sharing.stop}
+                onLeaveVoice={sharing.stop}
                 onNavigate={(tab) =>
                   navigateWithHistory(false, tab, activeServerId)
                 }
@@ -882,6 +947,10 @@ export function SpaceWorkspace({
             {activeTab === "screen" && (
               <ScreenShareView
                 currentUser={currentUser}
+                screenShares={screenShares}
+                viewedOwner={viewedShareOwner}
+                onWatchShare={setViewedShareOwner}
+                onStopSharing={sharing.stop}
                 onNavigate={(tab) =>
                   navigateWithHistory(false, tab, activeServerId)
                 }
@@ -892,106 +961,12 @@ export function SpaceWorkspace({
         )}
       </div>
 
-      {/* 3. THANH DOCK BÊN DƯỚI: Mặc định ẩn đi, có nút mũi tên bấm vào mới hiện lên, không che thanh chat */}
-      <div className="relative z-40 flex shrink-0 justify-center">
-        {/* Nút mũi tên Bật / Tắt thanh Dock */}
-        <button
-          onClick={() => setDockExpanded((v) => !v)}
-          aria-expanded={dockExpanded}
-          title={
-            dockExpanded ? "Thu gọn thanh Dock" : "Mở thanh Dock máy chủ"
-          }
-          className="min-h-8 px-3.5 py-1 rounded-t-xl bg-[#120f19]/95 border border-b-0 border-white/15 text-[#b7aabe] hover:text-[#c8b2f1] flex items-center gap-1 text-xs font-semibold transition"
-        >
-          {dockExpanded ? (
-            <>
-              <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-              <span>Ẩn Dock</span>
-            </>
-          ) : (
-            <>
-              <ChevronUp className="w-3.5 h-3.5 shrink-0" />
-              <span>Máy chủ & Tin nhắn</span>
-            </>
-          )}
-        </button>
-
-        {/* Nội dung thanh Dock chỉ hiện khi đã bấm nút mũi tên */}
-        {dockExpanded && (
-          <div className="absolute bottom-full mb-2 max-w-[calc(100%-1rem)] flex items-center gap-2 overflow-x-auto p-3 rounded-2xl bg-[#120f19]/95 border border-white/15 shadow-[0_10px_35px_rgba(0,0,0,0.85)]">
-            {/* ĐẦU THANH DOCK: ICON TIN NHẮN TRỰC TIẾP (DM) */}
-            <button
-              onClick={() => {
-                navigateWithHistory(false, "dm", activeServerId);
-                setDockExpanded(false);
-              }}
-              title="Tin nhắn trực tiếp (DM)"
-              aria-label="Tin nhắn trực tiếp"
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition relative ${
-                !isInLobby && activeTab === "dm"
-                  ? "bg-[#c8b2f1] text-[#271737] shadow-[0_0_15px_rgba(200,178,241,0.45)]"
-                  : "bg-[#1c172c] hover:bg-[#261e3a] text-[#c8b2f1] border border-white/10"
-              }`}
-            >
-              <MessageSquare className="w-4 h-4 shrink-0" />
-              <span className="w-4 h-4 rounded-full bg-[#a2d9d3] text-[#15121d] text-xs font-bold grid place-items-center absolute -top-1 -right-1 border border-[#120f19]">
-                2
-              </span>
-            </button>
-
-            <div className="w-[1px] h-6 bg-white/15 mx-0.5" />
-
-            {/* DANH SÁCH MÁY CHỦ (Khi đang ở DM, máy chủ đang truy cập vẫn có viền sáng báo hiệu) */}
-            {joinedServers.map((srv) => {
-              const Icon = srv.icon;
-              const isSelectedServer = activeServerId === srv.id;
-              const isViewingServer =
-                isSelectedServer && !isInLobby && activeTab !== "dm";
-              return (
-                <button
-                  key={srv.id}
-                  onClick={() => {
-                    navigateWithHistory(false, "overview", srv.id);
-                    setDockExpanded(false);
-                  }}
-                  title={`Máy chủ: ${srv.name}`}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs transition relative ${
-                    isViewingServer
-                      ? "bg-[#c8b2f1] text-[#271737] shadow-[0_0_15px_rgba(200,178,241,0.4)]"
-                      : isSelectedServer
-                        ? "bg-[#261e3a] text-[#c8b2f1] border-2 border-[#c8b2f1]"
-                        : "bg-[#1c172c] hover:bg-[#261e3a] text-[#f4effa] border border-white/10"
-                  }`}
-                >
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <PreviewServerPhoto id={srv.id} />
-                  {srv.onlineDot && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#a2d9d3] border-2 border-[#120f19] absolute -top-0.5 -right-0.5" />
-                  )}
-                </button>
-              );
-            })}
-
-            <div className="w-[1px] h-6 bg-white/15 mx-0.5" />
-
-            {/* Nút về Sảnh chờ */}
-            <button
-              onClick={() => {
-                navigateWithHistory(true, "overview", activeServerId);
-                setDockExpanded(false);
-              }}
-              title="Sảnh chờ"
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition ${
-                isInLobby
-                  ? "bg-[#a2d9d3] text-[#15121d]"
-                  : "bg-[#1c172c]/70 hover:bg-[#1c172c] text-[#b7aabe] hover:text-[#f4effa]"
-              }`}
-            >
-              <Compass className="w-4 h-4 shrink-0" />
-            </button>
-          </div>
-        )}
-      </div>
+      {sharing.stream && (isInLobby || activeTab !== "screen" || viewedShareOwner !== currentUser) && <aside aria-label="Màn hình chia sẻ thu nhỏ" className="fixed bottom-9 right-4 z-40 w-64 max-w-[calc(100vw-32px)] shadow-xl">
+        <ShareVideo compact share={{ owner: currentUser, stream: sharing.stream, isLocal: true }} onStop={sharing.stop} onOpen={() => {
+          setViewedShareOwner(currentUser);
+          navigateWithHistory(false, "screen", activeServerId);
+        }} />
+      </aside>}
 
       {/* POPUP 1: MỜI BẠN BÈ */}
       {inviteModalOpen && (
@@ -1198,7 +1173,7 @@ export function SpaceWorkspace({
             {quickPopupType === "leave" ? (
               <div className="space-y-4">
                 <p className="text-[#b7aabe]">
-                  Bạn có chắc chắn muốn rời khỏi máy chủ{" "}
+                  Bạn có chắc chắn muốn rời khỏi kênh{" "}
                   <strong className="text-[#f4effa]">
                     {currentServer.name}
                   </strong>
@@ -1218,7 +1193,7 @@ export function SpaceWorkspace({
                     }}
                     className="px-4 py-2 rounded-xl bg-red-500 text-white font-bold"
                   >
-                    Rời máy chủ
+                    Rời kênh
                   </button>
                 </div>
               </div>
@@ -1233,7 +1208,7 @@ export function SpaceWorkspace({
                   />
                 </label>
                 <label className="p-3 rounded-xl bg-[#15121d] border border-white/10 flex items-center justify-between">
-                  <span>Cho phép thành viên cùng máy chủ nhắn tin riêng</span>
+                  <span>Cho phép thành viên cùng kênh nhắn tin riêng</span>
                   <input
                     type="checkbox"
                     defaultChecked
@@ -1268,7 +1243,7 @@ export function SpaceWorkspace({
               <div className="flex items-center gap-2.5 text-xs">
                 <span className="w-2.5 h-2.5 rounded-full bg-[#c8b2f1]" />
                 <span className="font-bold text-[#f4effa]">
-                  Cài đặt Máy chủ — {currentServer.name}
+                  Cài đặt Kênh — {currentServer.name}
                 </span>
               </div>
               <button

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
+import { SharePicker } from "./share-picker";
 import { PreviewAvatar } from "./preview-images";
 import {
   ArrowLeft,
-  UserPlus,
   Users,
   MonitorUp,
   Mic,
@@ -18,14 +18,13 @@ import {
 } from "lucide-react";
 import { ViewProps } from "./types";
 
-const VOICE_ROOMS_DATA: Record<
+export const VOICE_ROOMS_DATA: Record<
   string,
   {
     subtitle: string;
     participants: {
       init: string;
       name: string;
-      role: string;
       badge: string;
       speaking: boolean;
       sub: string;
@@ -38,23 +37,13 @@ const VOICE_ROOMS_DATA: Record<
       {
         init: "QB",
         name: "Quốc Bảo",
-        role: "Trưởng nhóm",
         badge: "• Đang nói",
         speaking: true,
         sub: "Đang phát biểu",
       },
       {
-        init: "TH",
-        name: "Thu Hà",
-        role: "UI/UX Designer",
-        badge: "Mic bật",
-        speaking: false,
-        sub: "Sẵn sàng trò chuyện",
-      },
-      {
         init: "MA",
         name: "Minh Anh",
-        role: "Design Lead",
         badge: "Đang nghe",
         speaking: false,
         sub: "Đang nghe",
@@ -62,7 +51,6 @@ const VOICE_ROOMS_DATA: Record<
       {
         init: "HL",
         name: "Hoàng Long",
-        role: "Frontend",
         badge: "Đã tắt mic",
         speaking: false,
         sub: "Đang nghe",
@@ -75,7 +63,6 @@ const VOICE_ROOMS_DATA: Record<
       {
         init: "BOT",
         name: "Bot Âm Nhạc",
-        role: "Phát nhạc tự động",
         badge: "♫ Đang phát",
         speaking: true,
         sub: "Nhạc Lo-Fi thư giãn",
@@ -83,7 +70,6 @@ const VOICE_ROOMS_DATA: Record<
       {
         init: "TH",
         name: "Thu Hà",
-        role: "UI/UX Designer",
         badge: "Đang nghe",
         speaking: false,
         sub: "Đang nghe nhạc",
@@ -92,16 +78,7 @@ const VOICE_ROOMS_DATA: Record<
   },
   "Phòng Dev & Code Review": {
     subtitle: "Trao đổi mã nguồn & giao diện",
-    participants: [
-      {
-        init: "QB",
-        name: "Quốc Bảo",
-        role: "Trưởng nhóm",
-        badge: "• Đang chia sẻ",
-        speaking: true,
-        sub: "Sẵn sàng trao đổi",
-      },
-    ],
+    participants: [],
   },
 };
 
@@ -110,7 +87,14 @@ export const VoiceStageView: React.FC<ViewProps> = ({
   onNavigate,
   selectedVoiceRoom = "Phòng Họp Nhóm",
   onSelectVoiceRoom,
+  screenShares = [],
+  onShareStarted,
+  onWatchShare,
+  onStopSharing,
+  onLeaveVoice,
+  onOpenInviteModal,
 }) => {
+  const [sharePickerOpen, setSharePickerOpen] = useState(false);
   const [micMuted, setMicMuted] = useState(false);
   const [deafened, setDeafened] = useState(false);
   const [cameraOn, setCameraOn] = useState(false);
@@ -125,7 +109,6 @@ export const VoiceStageView: React.FC<ViewProps> = ({
     {
       init: "NM",
       name: `${currentUser} (Bạn)`,
-      role: "Chủ kênh",
       badge: "• Bạn",
       speaking: !micMuted,
       sub: micMuted ? "Mic đang tắt" : "Mic đang hoạt động",
@@ -133,7 +116,8 @@ export const VoiceStageView: React.FC<ViewProps> = ({
   ];
 
   return (
-    <div className="flex-1 min-h-0 w-full overflow-y-auto px-4 sm:px-6 md:px-10 xl:px-14 py-6">
+    <div className={`flex-1 min-h-0 w-full overflow-y-auto px-4 sm:px-6 md:px-10 xl:px-14 pt-6 ${screenShares.some(share => share.isLocal) ? "pb-60" : "pb-6"}`}>
+      {sharePickerOpen && onShareStarted && <SharePicker onClose={() => setSharePickerOpen(false)} onShareStarted={onShareStarted} />}
       <div className="max-w-[1400px] mx-auto flex flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -163,8 +147,8 @@ export const VoiceStageView: React.FC<ViewProps> = ({
             </div>
           </div>
 
-          <button className="px-3.5 py-2 rounded-xl bg-[#c8b2f1]/15 border border-[#c8b2f1]/40 text-[#c8b2f1] text-xs font-semibold flex items-center gap-1.5">
-            <UserPlus className="w-3.5 h-3.5 shrink-0" /> Mời bạn bè
+          <button onClick={() => onOpenInviteModal?.()} className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#c8b2f1] hover:bg-[#d8c7f7] text-[#271737] text-xs font-bold transition shadow-md">
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" /> Mời bạn bè
           </button>
         </div>
 
@@ -179,11 +163,12 @@ export const VoiceStageView: React.FC<ViewProps> = ({
             </span>
           </div>
           <button
-            onClick={() => onNavigate("screen")}
+            onClick={() => setSharePickerOpen(true)}
             className="workspace-action px-4 py-2 rounded-xl bg-[#c8b2f1] hover:bg-[#d8c7f7] text-[#271737] font-bold flex items-center gap-1.5 transition shadow"
           >
             <MonitorUp className="w-3.5 h-3.5 shrink-0" /> Chia sẻ màn hình
           </button>
+          <button onClick={() => onNavigate("screen")} className="workspace-action rounded-xl border border-[#c8b2f1]/40 px-4 py-2 text-[#c8b2f1] hover:bg-white/10">Xem chia sẻ</button>
         </div>
 
         {/* Lưới Thẻ Thành viên */}
@@ -207,7 +192,11 @@ export const VoiceStageView: React.FC<ViewProps> = ({
                 {p.badge}
               </span>
 
-              <div
+              <button
+                type="button"
+                disabled={!screenShares.some(share => share.owner === (p.name.endsWith(" (Bạn)") ? currentUser : p.name))}
+                onClick={() => onWatchShare?.(p.name.endsWith(" (Bạn)") ? currentUser : p.name)}
+                aria-label={`Xem màn hình của ${p.name}`}
                 className={`relative w-18 h-18 rounded-full grid place-items-center text-lg font-bold mb-3.5 ${
                   p.speaking
                     ? "bg-[#a2d9d3] text-[#15121d] ring-4 ring-[#a2d9d3]/30"
@@ -215,17 +204,17 @@ export const VoiceStageView: React.FC<ViewProps> = ({
                 }`}
               >
                 <PreviewAvatar name={p.name} initials={p.init} />
-              </div>
+              </button>
+              {screenShares.some(share => share.owner === (p.name.endsWith(" (Bạn)") ? currentUser : p.name)) && <span className="mb-2 rounded bg-[#9b2c42] px-2 py-1 text-xs text-white">Đang chia sẻ</span>}
 
-              <div className="font-bold text-base text-[#f4effa]">{p.name}</div>
-              <div className="text-xs text-[#b7aabe] mt-0.5 mb-3">{p.role}</div>
+              <div className="font-bold text-base text-[#f4effa] mb-3">{p.name}</div>
               <span className="px-3 py-1 rounded-full bg-[#15121d] border border-white/10 text-xs text-[#a2d9d3]">
                 {p.sub}
               </span>
             </div>
           ))}
 
-          <div className="rounded-2xl bg-[#1c172c]/40 border border-dashed border-white/15 hover:border-[#c8b2f1]/50 p-7 flex flex-col items-center justify-center text-center cursor-pointer transition min-h-[215px]">
+          <button onClick={() => onOpenInviteModal?.()} className="rounded-2xl bg-[#1c172c]/40 border border-dashed border-white/15 hover:border-[#c8b2f1]/50 p-7 flex flex-col items-center justify-center text-center cursor-pointer transition min-h-[215px]">
             <div className="w-12 h-12 rounded-full bg-white/5 grid place-items-center text-[#c8b2f1] mb-3">
               <Plus className="w-5 h-5 shrink-0" />
             </div>
@@ -235,10 +224,11 @@ export const VoiceStageView: React.FC<ViewProps> = ({
             <p className="text-xs text-[#b7aabe]">
               Mời thành viên cùng tham gia {activeRoomName}
             </p>
-          </div>
+          </button>
         </div>
 
         {/* Cụm Điều khiển Cuộc gọi */}
+        {screenShares.some(share => share.isLocal) && <button onClick={onStopSharing} className="workspace-action self-center rounded-lg bg-[#9b2c42] px-4 py-2 text-white">Dừng chia sẻ</button>}
         <div className="mx-auto flex flex-col items-center gap-2 pt-2">
           <div className="px-3 py-2.5 rounded-2xl bg-[#1c172c] border border-white/15 flex flex-wrap items-center justify-center gap-2 shadow-2xl">
             <button
@@ -285,7 +275,7 @@ export const VoiceStageView: React.FC<ViewProps> = ({
               {cameraOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
             </button>
             <button
-              onClick={() => onNavigate("screen")}
+              onClick={() => setSharePickerOpen(true)}
               aria-label="Mở màn hình chia sẻ"
               title="Mở màn hình chia sẻ"
               className="w-10 h-10 rounded-xl bg-white/10 hover:bg-[#a2d9d3]/20 text-[#a2d9d3] border border-[#a2d9d3]/30 flex items-center justify-center transition"
@@ -297,7 +287,7 @@ export const VoiceStageView: React.FC<ViewProps> = ({
             </button>
             <div className="w-[1px] h-6 bg-white/10 mx-0.5" />
             <button
-              onClick={() => onNavigate("overview")}
+              onClick={() => { onLeaveVoice?.(); onNavigate("overview"); }}
               aria-label="Rời phòng thoại"
               title="Rời phòng thoại"
               className="w-10 h-10 rounded-xl bg-[#9b2c42] text-white hover:bg-[#ac304a] flex items-center justify-center transition shadow-md"

@@ -7,9 +7,7 @@ import {
   Settings,
   Info,
   ArrowRight,
-  Share2,
   Sparkles,
-  SlidersHorizontal,
   Lock,
   Users,
   MessageSquare,
@@ -101,7 +99,7 @@ export const OverviewView: React.FC<ViewProps> = ({
 
               <button
                 onClick={() => onOpenSettingsModal?.(0)}
-                title="Thông tin Máy chủ"
+                title="Thông tin Kênh"
                 className="p-2 rounded-xl bg-[#15121d]/80 hover:bg-white/10 text-[#b7aabe] hover:text-[#f4effa] transition border border-white/10"
               >
                 <Info className="w-3.5 h-3.5" />
@@ -163,7 +161,7 @@ export const OverviewView: React.FC<ViewProps> = ({
                   </h2>
                 </div>
                 <p className="text-xs text-[#b7aabe] mt-0.5">
-                  {chatChannels.length} kênh văn bản đang hoạt động
+                  {chatChannels.length} phòng văn bản đang hoạt động
                 </p>
               </div>
 
@@ -173,7 +171,7 @@ export const OverviewView: React.FC<ViewProps> = ({
                   className="flex items-center gap-1.5 text-xs text-[#f4effa] px-3 py-1.5 rounded-xl bg-white/5 hover:bg-[#c8b2f1] hover:text-[#271737] border border-white/10 font-semibold transition"
                 >
                   <Plus className="w-3.5 h-3.5 text-[#c8b2f1]" />
-                  <span>Tạo kênh</span>
+                  <span>Tạo phòng</span>
                 </button>
               ) : (
                 <span className="flex items-center gap-1 text-xs text-[#b7aabe]/60 px-2.5 py-1 rounded-lg bg-[#15121d]/60 border border-white/5">
@@ -189,7 +187,7 @@ export const OverviewView: React.FC<ViewProps> = ({
                   <button
                     key={ch.id}
                     type="button"
-                    aria-label={`Mở kênh ${ch.name}`}
+                    aria-label={`Mở phòng ${ch.name}`}
                     onClick={() => openChannel(ch.name)}
                     className={`w-full text-left flex items-center justify-between gap-2 px-4 py-3.5 rounded-xl border transition group ${
                       isMain
@@ -272,111 +270,9 @@ export const OverviewView: React.FC<ViewProps> = ({
               )}
             </div>
 
-            {/* Active Live Voice Stage */}
-            <div className="border border-[#c8b2f1]/40 bg-[#261e3a]/75 rounded-2xl p-4 space-y-3.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-[#a2d9d3] animate-pulse" />
-                  <h3 className="font-bold text-sm text-[#f4effa]">
-                    Phòng Họp Nhóm
-                  </h3>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-[#a2d9d3] text-[#15121d] font-bold">
-                    TRỰC TIẾP
-                  </span>
-                </div>
-                <span className="text-xs text-[#f4effa] font-semibold">
-                  4/10 người
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                {[
-                  { init: "TH", name: "Thu Hà", sub: "Đang nói", active: true },
-                  {
-                    init: "QB",
-                    name: "Quốc Bảo",
-                    sub: "Đang nghe",
-                    active: false,
-                  },
-                  {
-                    init: "MA",
-                    name: "Minh Anh",
-                    sub: "Đang nghe",
-                    active: false,
-                  },
-                  {
-                    init: "HL",
-                    name: "Hoàng Long",
-                    sub: "Đang nghe",
-                    active: false,
-                  },
-                ].map((u, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => openVoice("Phòng Họp Nhóm")}
-                    className={`min-w-0 bg-[#15121d]/90 rounded-xl p-3 flex flex-col items-center justify-center border transition ${
-                      u.active
-                        ? "border-[#a2d9d3] shadow-[0_0_12px_rgba(162,217,211,0.18)]"
-                        : "border-white/10 hover:border-white/25"
-                    }`}
-                  >
-                    <span
-                      className={`relative w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs mb-1.5 ${
-                        u.active
-                          ? "bg-[#261e3a] text-[#a2d9d3] ring-2 ring-[#a2d9d3]"
-                          : "bg-[#261e3a] text-[#f4effa]"
-                      }`}
-                    >
-                      <PreviewAvatar name={u.name} initials={u.init} />
-                    </span>
-                    <span className="text-xs font-semibold text-center text-[#f4effa] truncate w-full">
-                      {u.name}
-                    </span>
-                    <span
-                      className={`text-xs mt-0.5 ${
-                        u.active ? "text-[#a2d9d3]" : "text-[#b7aabe]"
-                      }`}
-                    >
-                      {u.sub}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-white/10">
-                <button
-                  type="button"
-                  onClick={() => onNavigate("screen")}
-                  className="workspace-action flex items-center gap-1.5 text-[#b7aabe] hover:text-[#c8b2f1] transition"
-                >
-                  <Share2 className="w-3.5 h-3.5" /> 2 màn hình đang chia sẻ
-                </button>
-
-                <div className="flex items-center gap-2">
-                  {isCreator && (
-                    <button
-                      onClick={() => onOpenSettingsModal?.(1)}
-                      title="Quản lý phòng thoại"
-                      className="workspace-icon-button rounded-lg bg-white/10 hover:bg-white/15 text-[#b7aabe] transition"
-                    >
-                      <SlidersHorizontal className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => openVoice("Phòng Họp Nhóm")}
-                    className="workspace-action flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#a2d9d3] hover:bg-[#b5e5df] text-[#15121d] font-bold transition"
-                  >
-                    <span>Tham gia</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
             {/* Other Voice Rooms */}
             <div className="space-y-2.5">
-              {voiceRooms.map((vr) =>
+              {[{ id: "preview-meeting", name: "Phòng Họp Nhóm", sub: "3 người trong phòng", locked: false }, ...voiceRooms].map((vr) =>
                 vr.locked && !isCreator ? (
                   <div
                     key={vr.id}

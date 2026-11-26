@@ -418,28 +418,24 @@ export const AdminRolesView: React.FC<AdminExtendedProps> = ({
                     {
                       init: "TĐ",
                       name: "Trần Văn Tuấn Đình",
-                      code: "Hệ thống & Backend",
                       role: "Creator",
                       isOwnerRole: true,
                     },
                     {
                       init: "TA",
                       name: "Phạm Tuấn Anh",
-                      code: "Kỹ thuật phần mềm",
                       role: "Moderator",
                       isOwnerRole: false,
                     },
                     {
                       init: "NQ",
                       name: "Bùi Nam Quân",
-                      code: "Frontend & UI/UX",
                       role: "Moderator",
                       isOwnerRole: false,
                     },
                     {
                       init: "NM",
                       name: `${currentUser} (Bạn)`,
-                      code: "Trưởng nhóm thiết kế",
                       role: isCreator ? "Creator" : "Member",
                       isOwnerRole: isCreator,
                     },
@@ -455,9 +451,6 @@ export const AdminRolesView: React.FC<AdminExtendedProps> = ({
                         <div>
                           <div className="text-sm font-semibold text-[#f4effa]">
                             {m.name}
-                          </div>
-                          <div className="text-xs text-[#b7aabe] mt-0.5">
-                            {m.code}
                           </div>
                         </div>
                       </div>

@@ -1,12 +1,8 @@
 import React, { useState } from "react";
 import {
-  PhoneCall,
-  Video,
-  Pin,
-  Search,
+  Menu,
   Download,
   Eye,
-  Mic,
   Send,
   Code,
   Smile,
@@ -16,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { ViewProps } from "./types";
+import { MessageActions } from "./message-actions";
 import { PreviewAvatar } from "./preview-images";
 
 interface FriendContact {
@@ -30,13 +27,19 @@ interface FriendContact {
 
 export const DirectMessageView: React.FC<ViewProps> = ({
   currentUser,
-  onNavigate,
+  initialFriendName,
 }) => {
   const [dmFilter, setDmFilter] = useState<
     "all" | "online" | "pending" | "add"
   >("all");
-  const [selectedFriendId, setSelectedFriendId] = useState<string>("f1");
+  const [selectedFriendId, setSelectedFriendId] = useState<string>(
+    ({ "Hoàng Đạt": "f1", "Thu Hà": "f2", "Quốc Bảo": "f3", "Minh Anh": "f4" } as Record<string, string>)[initialFriendName || ""] || "f1",
+  );
   const [dmInput, setDmInput] = useState("");
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState("Tệp");
+  const [messageSearch, setMessageSearch] = useState("");
+  const [pinnedMessages, setPinnedMessages] = useState<Record<string, string[]>>({});
   const [addUsernameInput, setAddUsernameInput] = useState("");
 
   // Danh sách bạn bè hiện tại
@@ -133,7 +136,7 @@ export const DirectMessageView: React.FC<ViewProps> = ({
     },
   ]);
 
-  const [dmMessages, setDmMessages] = useState([
+  const [messagesByFriend, setMessagesByFriend] = useState<Record<string, {id: number; sender: string; time: string; isMe: boolean; text: string; file?: {name: string; size: string}}[]>>({ f1: [
     {
       id: 1,
       sender: "Hoàng Đạt",
@@ -158,9 +161,10 @@ export const DirectMessageView: React.FC<ViewProps> = ({
       time: "09:46 SA",
       isMe: false,
       text: "Khi nào rảnh anh em mình bấm gọi thoại trao đổi nhanh một chút nhé!",
-      callPrompt: true,
     },
-  ]);
+  ] });
+
+  const dmMessages = messagesByFriend[selectedFriendId] || [];
 
   const activeFriend =
     friends.find((f) => f.id === selectedFriendId) || friends[0];
@@ -171,8 +175,8 @@ export const DirectMessageView: React.FC<ViewProps> = ({
   const handleSendDm = (e: React.FormEvent) => {
     e.preventDefault();
     if (!dmInput.trim()) return;
-    setDmMessages([
-      ...dmMessages,
+    setMessagesByFriend(previous => ({ ...previous, [selectedFriendId]: [
+      ...(previous[selectedFriendId] || []),
       {
         id: Date.now(),
         sender: `Bạn (${currentUser})`,
@@ -180,7 +184,7 @@ export const DirectMessageView: React.FC<ViewProps> = ({
         isMe: true,
         text: dmInput,
       },
-    ]);
+    ] }));
     setDmInput("");
   };
 
@@ -299,7 +303,7 @@ export const DirectMessageView: React.FC<ViewProps> = ({
                 <button
                   key={f.id}
                   type="button"
-                  onClick={() => setSelectedFriendId(f.id)}
+                  onClick={() => { setSelectedFriendId(f.id); setMessageSearch(""); }}
                   aria-pressed={selectedFriendId === f.id}
                   className={`w-full text-left p-3 rounded-xl border transition flex items-center justify-between ${
                     selectedFriendId === f.id
@@ -468,27 +472,12 @@ export const DirectMessageView: React.FC<ViewProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onNavigate("voice")}
-              title="Gọi thoại"
-              className="p-2.5 rounded-xl bg-[#1c172c] hover:bg-white/10 border border-white/10 text-[#a2d9d3] transition"
-            >
-              <PhoneCall size={15} />
-            </button>
-            <button
-              onClick={() => onNavigate("screen")}
-              title="Gọi Video"
-              className="p-2.5 rounded-xl bg-[#c8b2f1] hover:bg-[#d8c7f7] text-[#271737] transition shadow"
-            >
-              <Video size={15} />
-            </button>
-            <button aria-label="Tin nhắn đã ghim" className="p-2.5 rounded-xl bg-[#1c172c] border border-white/10 text-[#b7aabe]">
-              <Pin size={15} />
-            </button>
-            <button aria-label="Tìm trong hội thoại" className="p-2.5 rounded-xl bg-[#1c172c] border border-white/10 text-[#b7aabe]">
-              <Search size={15} />
-            </button>
+          <div className="relative">
+            <button aria-label="Thông tin hội thoại" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)} className="workspace-icon-button rounded-lg bg-[#261e3a] hover:bg-[#3a2c4b]"><Menu size={19}/></button>
+            {detailsOpen && <div className="absolute right-0 top-full z-30 mt-2 w-72 max-w-[90vw] rounded-xl border border-white/15 bg-[#211a2e] p-3 shadow-xl">
+              <div className="flex flex-wrap gap-1">{["Tệp", "Phương tiện", "Tìm tin nhắn", "Tin nhắn đã ghim"].map(tab => <button key={tab} onClick={() => setDetailTab(tab)} className={`rounded-lg px-2 py-2 text-xs ${detailTab===tab ? "bg-[#c8b2f1] text-[#271737]" : "hover:bg-white/10"}`}>{tab}</button>)}</div>
+              {detailTab==="Tìm tin nhắn" ? <label className="mt-3 block text-xs">Tìm trong hội thoại<input value={messageSearch} onChange={e=>setMessageSearch(e.target.value)} className="mt-2 w-full rounded-lg border border-white/15 bg-[#15121d] p-2 text-sm" placeholder="Nhập nội dung"/></label> : detailTab === "Tin nhắn đã ghim" ? <div className="mt-3 space-y-2 text-sm text-[#d1c7d9]">{(pinnedMessages[selectedFriendId] || []).length ? pinnedMessages[selectedFriendId].map(text => <p key={text} className="rounded-lg bg-[#15121d] p-2">{text}</p>) : <p>Chưa có tin nhắn đã ghim.</p>}</div> : detailTab === "Tệp" ? <div className="mt-3 space-y-2 text-sm text-[#d1c7d9]">{dmMessages.some(message => message.file) ? dmMessages.filter(message => message.file).map(message => <p key={message.id} className="rounded-lg bg-[#15121d] p-2">{message.file?.name} · {message.file?.size}</p>) : <p>Chưa có tệp đính kèm.</p>}</div> : <p className="mt-4 text-sm text-[#b7aabe]">Chưa có phương tiện trong bản xem thử.</p>}
+            </div>}
           </div>
         </div>
 
@@ -503,12 +492,13 @@ export const DirectMessageView: React.FC<ViewProps> = ({
               <div className="h-[1px] flex-1 bg-white/10" />
             </div>
 
-            {dmMessages.map((dm) => (
-              <div
+            {dmMessages.filter(dm => dm.text.toLocaleLowerCase("vi").includes(messageSearch.toLocaleLowerCase("vi"))).map((dm) => (
+              <MessageActions
                 key={dm.id}
-                className={`flex flex-col ${
-                  dm.isMe ? "items-end" : "items-start"
-                }`}
+                messageId={String(dm.id)}
+                isMe={dm.isMe}
+                onDelete={() => { setMessagesByFriend(previous => ({ ...previous, [selectedFriendId]: (previous[selectedFriendId] || []).filter(message => message.id !== dm.id) })); setPinnedMessages(previous => ({ ...previous, [selectedFriendId]: (previous[selectedFriendId] || []).filter(text => text !== dm.text) })); }}
+                text={dm.text} onReply={text => setDmInput(`> ${text}\n`)} onPin={(text, pinned) => setPinnedMessages(previous => ({ ...previous, [selectedFriendId]: pinned ? [...(previous[selectedFriendId] || []), text] : (previous[selectedFriendId] || []).filter(item => item !== text) }))}
               >
                 <div className="text-xs text-[#b7aabe] mb-1.5 px-1">
                   <strong className="text-[#f4effa]">{dm.sender}</strong> •{" "}
@@ -544,34 +534,14 @@ export const DirectMessageView: React.FC<ViewProps> = ({
                     </div>
                   )}
 
-                  {dm.callPrompt && (
-                    <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
-                      <span className="text-xs text-[#a2d9d3] font-semibold">
-                        ✦ Bắt đầu cuộc gọi với {activeFriend.name}
-                      </span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => onNavigate("voice")}
-                          className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/15 text-xs flex items-center gap-1.5"
-                        >
-                          <PhoneCall size={12} /> Thoại
-                        </button>
-                        <button
-                          onClick={() => onNavigate("screen")}
-                          className="px-3.5 py-1.5 rounded-xl bg-[#c8b2f1] text-[#271737] font-bold text-xs flex items-center gap-1.5"
-                        >
-                          <Video size={12} /> Video
-                        </button>
-                      </div>
-                    </div>
-                  )}
+
                 </div>
                 {dm.isMe && (
                   <span className="text-xs text-[#a2d9d3] mt-1">
                     ✓ Đã gửi
                   </span>
                 )}
-              </div>
+              </MessageActions>
             ))}
           </div>
         </div>
@@ -618,13 +588,6 @@ export const DirectMessageView: React.FC<ViewProps> = ({
 
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => onNavigate("voice")}
-                  className="workspace-action px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-[#a2d9d3] flex items-center gap-1.5 transition"
-                >
-                  <Mic size={12} /> Gửi ghi âm
-                </button>
               </div>
               <button
                 type="submit"

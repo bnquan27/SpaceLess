@@ -8,9 +8,9 @@ import {
   Link2,
   Check,
   Headphones,
-  Radio,
 } from "lucide-react";
 import { PreviewAvatar, PreviewServerPhoto } from "./preview-images";
+import { VOICE_ROOMS_DATA } from "./voice-stage-view";
 
 export interface HomeServerItem {
   id: string;
@@ -29,7 +29,7 @@ interface HomeHubViewProps {
   currentUser: string;
   servers: HomeServerItem[];
   onSelectServer: (serverId: string) => void;
-  onOpenDm: () => void;
+  onOpenDm: (name?: string) => void;
   onQuickJoinVoice: (serverId: string, roomName: string) => void;
 }
 
@@ -40,13 +40,17 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
   onOpenDm,
   onQuickJoinVoice,
 }) => {
+  const activeVoiceRooms = Object.entries(VOICE_ROOMS_DATA).map(([name, room]) => ({
+    name,
+    friends: room.participants.filter(person => ["Thu Hà", "Quốc Bảo", "Minh Anh", "Hoàng Long"].includes(person.name)),
+  })).filter(room => room.friends.length > 0).slice(0, 3);
   const [inviteCode, setInviteCode] = useState("");
   const [joinNotice, setJoinNotice] = useState("");
 
   const handleJoinByCode = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteCode.trim()) return;
-    setJoinNotice(`Đang kết nối vào máy chủ "${inviteCode}"...`);
+    setJoinNotice(`Đang kết nối vào kênh "${inviteCode}"...`);
     setTimeout(() => {
       setJoinNotice("");
       setInviteCode("");
@@ -74,7 +78,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
               <span className="text-[#c8b2f1]">{currentUser}</span>!
             </h1>
             <p className="text-sm leading-relaxed text-[#b7aabe]">
-              Chọn một máy chủ bên dưới để bắt đầu trò chuyện hoặc nhắn tin trực
+              Chọn một kênh bên dưới để bắt đầu trò chuyện hoặc nhắn tin trực
               tiếp với bạn bè.
             </p>
           </div>
@@ -86,7 +90,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
           >
             <label htmlFor="workspace-invite-code" className="text-sm font-bold text-[#f4effa] flex items-center gap-1.5">
               <Link2 className="w-3.5 h-3.5 text-[#a2d9d3] shrink-0" />
-              Tham gia máy chủ bằng mã mời
+              Tham gia kênh bằng mã mời
             </label>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -116,27 +120,28 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
 
         {/* 2. HAI KHUNG BẰNG NHAU & KÉO SÁT XUỐNG GẦN THANH DOCK */}
         <div className="lg:flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch lg:min-h-0">
-          {/* CỘT TRÁI (8/12): MÁY CHỦ CỦA BẠN (Đã bỏ phần mô tả máy chủ) */}
+          {/* CỘT TRÁI (8/12): KÊNH TRUY CẬP GẦN ĐÂY (Đã bỏ phần mô tả kênh) */}
           <div className="lg:col-span-8 bg-[#1c172c]/70 border border-white/10 rounded-2xl p-6 flex flex-col justify-between shadow-lg min-h-0 overflow-y-auto">
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xs font-bold uppercase tracking-wider text-[#f4effa] flex items-center gap-2">
                     <FolderGit2 className="w-4 h-4 text-[#c8b2f1] shrink-0" />
-                    MÁY CHỦ CỦA BẠN ({servers.length})
+                    KÊNH TRUY CẬP GẦN ĐÂY ({servers.length})
                   </h2>
                   <p className="text-xs text-[#b7aabe] mt-0.5">
-                    Bấm vào máy chủ để mở danh sách kênh và phòng thoại
+                    Những kênh bạn đã mở trong phiên này
                   </p>
                 </div>
 
                 <button className="workspace-action px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 font-semibold text-[#f4effa] flex items-center gap-1.5 transition">
                   <Plus className="w-3.5 h-3.5 text-[#c8b2f1] shrink-0" />
-                  <span>Tạo máy chủ</span>
+                  <span>Tạo kênh</span>
                 </button>
               </div>
 
-              {/* Lưới 2x2 Thẻ Máy chủ (Gọn gàng, không có mô tả) */}
+              {/* Lưới 2x2 Thẻ Kênh (Gọn gàng, không có mô tả) */}
+              {servers.length === 0 && <p className="rounded-xl bg-[#15121d]/80 p-5 text-sm text-[#b7aabe]">Chưa có kênh truy cập gần đây. Chọn kênh từ thanh điều hướng phía trên.</p>}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {servers.map((srv) => {
                   const Icon = srv.icon;
@@ -147,7 +152,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
                     >
                       <button
                         type="button"
-                        aria-label={`Mở máy chủ ${srv.name}`}
+                        aria-label={`Mở kênh ${srv.name}`}
                         onClick={() => onSelectServer(srv.id)}
                         className="absolute inset-0 rounded-2xl"
                       />
@@ -192,53 +197,51 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
               </div>
             </div>
 
-            {/* Thanh Phòng thoại đang hoạt động */}
-            <div className="p-4 rounded-2xl bg-[#261e3a]/80 border border-[#a2d9d3]/35 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mt-4">
-              <div className="flex items-center gap-3.5">
-                <div className="w-10 h-10 rounded-xl bg-[#a2d9d3]/20 text-[#a2d9d3] grid place-items-center">
-                  <Radio className="w-5 h-5 animate-pulse shrink-0" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs font-bold text-[#f4effa]">
-                      Phòng Họp Nhóm — Nhóm Đồ Án - UI/UX
-                    </span>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-[#a2d9d3] text-[#15121d] font-bold">
-                      4 NGƯỜI
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#b7aabe] mt-0.5">
-                    Thu Hà, Quốc Bảo, Minh Anh, Hoàng Long đang ở trong phòng
-                    thoại
-                  </p>
-                </div>
+            <section aria-label="Bạn bè trong phòng thoại" className="mt-6 border-t border-white/10 pt-5">
+              <div className="mb-3 flex items-center gap-2">
+                <Headphones className="h-4 w-4 text-[#a2d9d3]" />
+                <h2 className="text-sm font-semibold text-[#f4effa]">Bạn bè trong phòng thoại</h2>
+                <span className="text-xs text-[#b7aabe]">Dữ liệu mẫu</span>
               </div>
-
-              <button
-                onClick={() => onQuickJoinVoice("uiux", "Phòng Họp Nhóm")}
-                className="workspace-action px-4 py-2 rounded-xl bg-[#a2d9d3] hover:bg-[#b5e5df] text-[#15121d] font-bold flex items-center gap-1.5 transition shrink-0"
-              >
-                <Headphones className="w-3.5 h-3.5 shrink-0" />
-                <span>Tham gia ngay</span>
-              </button>
-            </div>
+              <div className="space-y-2">
+                {activeVoiceRooms.map(room => (
+                  <div key={room.name} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-[#15121d]/70 p-3">
+                    <div className="min-w-0 flex-1 basis-36">
+                      <p className="truncate text-sm font-semibold text-[#f4effa]">{room.name}</p>
+                      <p className="mt-1 truncate text-xs text-[#b7aabe]">Nhóm Đồ Án - UI/UX</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex -space-x-2" aria-label={room.friends.map(friend => friend.name).join(", ")}>
+                        {room.friends.slice(0, 4).map(friend => (
+                          <span key={friend.name} title={friend.name} className="relative block h-9 w-9 rounded-full border-2 border-[#15121d] bg-[#30243f] text-xs text-white">
+                            <PreviewAvatar name={friend.name} initials={friend.init} />
+                          </span>
+                        ))}
+                      </div>
+                      <span className="whitespace-nowrap text-xs text-[#b7aabe]">{room.friends.length} bạn</span>
+                    </div>
+                    <button onClick={() => onQuickJoinVoice("uiux", room.name)} aria-label={`Tham gia ${room.name}`} className="workspace-action rounded-lg bg-[#a2d9d3] px-4 py-2 text-sm font-semibold text-[#15121d] hover:bg-[#b5e5df]">Tham gia</button>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
 
-          {/* CỘT PHẢI (4/12): TRÒ CHUYỆN TRỰC TIẾP (Cao bằng khung trái) */}
+          {/* CỘT PHẢI (4/12): TIN NHẮN GẦN ĐÂY (Cao bằng khung trái) */}
           <div className="lg:col-span-4 bg-[#1c172c]/70 border border-white/10 rounded-2xl p-6 flex flex-col justify-between shadow-lg min-h-0 overflow-y-auto">
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-x-3">
                 <div>
                   <h2 className="text-xs font-bold uppercase tracking-wider text-[#f4effa] flex items-center gap-2">
                     <MessageSquare className="w-4 h-4 text-[#a2d9d3] shrink-0" />
-                    TRÒ CHUYỆN TRỰC TIẾP
+                    TIN NHẮN GẦN ĐÂY
                   </h2>
                   <p className="text-xs text-[#b7aabe] mt-0.5">
-                    Nhắn tin riêng với bạn bè của bạn
+                    Những cuộc trò chuyện gần đây
                   </p>
                 </div>
                 <button
-                  onClick={onOpenDm}
+                  onClick={() => onOpenDm()}
                   className="workspace-action font-semibold text-[#c8b2f1] hover:underline"
                 >
                   Mở tất cả
@@ -257,29 +260,29 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
                   {
                     init: "TH",
                     name: "Thu Hà",
-                    status: "Đang chỉnh sửa giao diện",
-                    time: "Trực tuyến",
+                    status: "Mình đã cập nhật bản thiết kế.",
+                    time: "Hôm nay",
                     unread: false,
                   },
                   {
                     init: "QB",
                     name: "Quốc Bảo",
-                    status: "Đang làm việc",
-                    time: "Trực tuyến",
+                    status: "Hẹn gặp bạn ở phòng thoại nhé.",
+                    time: "Hôm nay",
                     unread: false,
                   },
                   {
                     init: "MA",
                     name: "Minh Anh",
-                    status: "Sẵn sàng trao đổi",
-                    time: "Trực tuyến",
+                    status: "Đã gửi tài liệu cho bạn.",
+                    time: "Hôm nay",
                     unread: false,
                   },
                 ].map((friend, i) => (
                   <button
                     key={i}
                     type="button"
-                    onClick={onOpenDm}
+                    onClick={() => onOpenDm(friend.name)}
                     className="w-full p-3.5 rounded-xl bg-[#15121d]/80 hover:bg-[#15121d] border border-white/10 hover:border-[#c8b2f1]/40 flex items-center justify-between gap-2 text-left transition"
                   >
                     <span className="flex items-center gap-3 min-w-0">
@@ -315,7 +318,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
             </div>
 
             <button
-              onClick={onOpenDm}
+              onClick={() => onOpenDm()}
               className="workspace-action w-full px-3 py-2.5 rounded-xl bg-[#15121d] hover:bg-[#261e3a] border border-white/10 font-bold text-[#c8b2f1] transition mt-4"
             >
               Đi tới danh sách Bạn bè & Tin nhắn →

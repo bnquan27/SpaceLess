@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { MessageActions } from "./message-actions";
 import { PreviewAvatar } from "./preview-images";
 import {
   Hash,
@@ -13,7 +14,6 @@ import {
   AtSign,
   List,
   Link2,
-  Info,
   PanelRightClose,
   PanelRightOpen,
   ArrowLeft,
@@ -25,7 +25,7 @@ const CHANNEL_METADATA: Record<
   { tag: string; desc: string; notice: string }
 > = {
   chung: {
-    tag: "Kênh chính",
+    tag: "Phòng chính",
     desc: "Không gian thảo luận chung và cập nhật tiến độ của cả nhóm",
     notice: "Họp tổng kết thiết kế giao diện vào 14:00 chiều nay.",
   },
@@ -68,7 +68,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
       {
         id: 1,
         sender: "Minh Anh",
-        role: "Quản trị viên",
         time: "10:14 SA",
         isMe: false,
         text: "Chào mọi người, mình gửi file đóng gói toàn bộ giao diện bản hoàn chỉnh nhé. Các bạn kiểm tra trước buổi họp chiều nay.",
@@ -80,7 +79,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
       {
         id: 2,
         sender: `Bạn (${currentUser})`,
-        role: "Chủ kênh",
         time: "10:18 SA",
         isMe: true,
         text: "Cảm ơn Minh Anh! Mình đã đồng bộ luôn phần tin nhắn trong nhóm giống với phần tin nhắn trực tiếp (DM) cho dễ nhìn rồi nhé.",
@@ -88,7 +86,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
       {
         id: 3,
         sender: "Quốc Bảo",
-        role: "Trưởng nhóm",
         time: "10:22 SA",
         isMe: false,
         text: "Giao diện nhìn thoáng và gọn hơn hẳn rồi đấy. Nhớ kiểm tra thêm phần thông báo góc phải nhé!",
@@ -98,7 +95,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
       {
         id: 101,
         sender: "Thu Hà",
-        role: "UI Designer",
         time: "09:50 SA",
         isMe: false,
         text: "Em vừa chỉnh lại thanh Dock ẩn xuống dưới đáy, khi nào bấm nút mũi tên mới hiện lên để không che thanh chat ạ.",
@@ -106,7 +102,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
       {
         id: 102,
         sender: `Bạn (${currentUser})`,
-        role: "Chủ kênh",
         time: "09:55 SA",
         isMe: true,
         text: "Chuẩn luôn Hà ơi, nhìn gọn gàng hơn rất nhiều!",
@@ -116,7 +111,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
       {
         id: 201,
         sender: "Hoàng Long",
-        role: "Frontend",
         time: "09:00 SA",
         isMe: false,
         text: "Đã hoàn thành tính năng kết bạn và danh sách chờ phản hồi trong trang DM.",
@@ -126,7 +120,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
       {
         id: 301,
         sender: "Minh Anh",
-        role: "Design Lead",
         time: "Hôm qua",
         isMe: false,
         text: "Gửi mọi người bộ Icon & Hình nền phi hành gia Space Orbit.",
@@ -146,7 +139,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
     const newMsg = {
       id: Date.now(),
       sender: `Bạn (${currentUser})`,
-      role: "Chủ kênh",
       time: "Vừa xong",
       isMe: true,
       text: msgInput,
@@ -249,25 +241,21 @@ export const ChannelChatView: React.FC<ViewProps> = ({
             <div className="flex items-center gap-4 text-xs text-[#b7aabe] uppercase tracking-wider">
               <div className="h-[1px] flex-1 bg-white/10" />
               <span className="px-3.5 py-1 rounded-full bg-[#1c172c] border border-white/10 font-semibold">
-                KÊNH #{activeChannel.toUpperCase()}
+                PHÒNG #{activeChannel.toUpperCase()}
               </span>
               <div className="h-[1px] flex-1 bg-white/10" />
             </div>
 
             {currentMessages.map((m) => (
-              <div
+              <MessageActions
                 key={m.id}
-                className={`flex flex-col ${
-                  m.isMe ? "items-end" : "items-start"
-                }`}
+                messageId={String(m.id)}
+                isMe={m.isMe}
+                onDelete={() => setMessagesByChannel(previous => ({ ...previous, [activeChannel]: previous[activeChannel].filter(message => message.id !== m.id) }))}
+                text={m.text} onReply={text => setMsgInput(`> ${text}\n`)}
               >
                 <div className="text-xs text-[#b7aabe] mb-1.5 px-1 flex items-center gap-1.5">
                   <strong className="text-[#f4effa]">{m.sender}</strong>
-                  {m.role && (
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-white/5 text-[#c8b2f1]">
-                      {m.role}
-                    </span>
-                  )}
                   <span>• {m.time}</span>
                 </div>
 
@@ -305,7 +293,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
                     ✓ Đã gửi
                   </span>
                 )}
-              </div>
+              </MessageActions>
             ))}
           </div>
         </div>
@@ -389,14 +377,13 @@ export const ChannelChatView: React.FC<ViewProps> = ({
 
             <div className="space-y-2.5">
               {[
-                { init: "TH", name: "Thu Hà", role: "UI Designer" },
-                { init: "QB", name: "Quốc Bảo", role: "Trưởng nhóm" },
-                { init: "HL", name: "Hoàng Long", role: "Frontend" },
-                { init: "MA", name: "Minh Anh", role: "Quản trị viên" },
+                { init: "TH", name: "Thu Hà" },
+                { init: "QB", name: "Quốc Bảo" },
+                { init: "HL", name: "Hoàng Long" },
+                { init: "MA", name: "Minh Anh" },
                 {
                   init: "NM",
                   name: `${currentUser} (Bạn)`,
-                  role: "Chủ kênh",
                   highlight: true,
                 },
               ].map((u, i) => (
@@ -417,9 +404,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
                       <div className="text-xs font-semibold text-[#f4effa] truncate">
                         {u.name}
                       </div>
-                      <div className="text-xs text-[#b7aabe] truncate">
-                        {u.role}
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -427,21 +411,6 @@ export const ChannelChatView: React.FC<ViewProps> = ({
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-[#1c172c] border border-white/10 space-y-3 mt-6">
-            <h4 className="text-xs font-bold flex items-center gap-1.5 text-[#a2d9d3]">
-              <Info className="w-3.5 h-3.5 shrink-0" /> Tài nguyên ghim
-            </h4>
-            <div className="space-y-2 text-xs text-[#b7aabe]">
-              <div className="flex justify-between">
-                <span>Bộ Icon Hệ Thống</span>
-                <span className="text-[#f4effa] font-semibold">12 tệp</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Lịch trình bảo vệ đồ án</span>
-                <span className="text-[#f4effa] font-semibold">Tuần 16</span>
-              </div>
-            </div>
-          </div>
         </aside>
       )}
     </div>

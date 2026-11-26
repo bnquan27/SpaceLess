@@ -1,5 +1,11 @@
 export type WorkspaceTab = "overview" | "chat" | "dm" | "voice" | "screen";
 
+export interface ScreenShareSession {
+  owner: string;
+  stream: MediaStream;
+  isLocal: boolean;
+}
+
 export interface ChatChannelItem {
   id: string;
   name: string;
@@ -20,6 +26,7 @@ export interface VoiceRoomItem {
 
 export interface ViewProps {
   currentUser: string;
+  initialFriendName?: string;
   onNavigate: (tab: WorkspaceTab) => void;
   isCreator?: boolean;
   selectedChatChannel?: string;
@@ -31,4 +38,9 @@ export interface ViewProps {
   onOpenInviteModal?: () => void;
   onOpenSettingsModal?: (initialMenu?: number) => void;
   onOpenCreateModal?: (type: "chat" | "voice") => void;
+  screenShares?: ScreenShareSession[];
+  onShareStarted?: (stream: MediaStream) => void;
+  onWatchShare?: (owner: string) => void;
+  onStopSharing?: () => void;
+  onLeaveVoice?: () => void;
 }
