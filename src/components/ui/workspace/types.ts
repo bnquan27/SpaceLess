@@ -25,6 +25,8 @@ export interface VoiceRoomItem {
 }
 
 export interface ViewProps {
+  roomId?: string;
+  channelId?: string;
   currentUser: string;
   initialFriendName?: string;
   onNavigate: (tab: WorkspaceTab) => void;

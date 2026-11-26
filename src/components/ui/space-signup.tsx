@@ -1,19 +1,23 @@
 import { useId, useState, type FormEvent } from 'react'
 import { ArrowUpRight, Eye, EyeOff } from 'lucide-react'
+import { errorText, type Registration } from '@/lib/api'
 
 type Field = 'username' | 'full_name' | 'email' | 'phone' | 'date_of_birth' | 'password'
 type Errors = Partial<Record<Field, string>>
 
-export function SpaceSignup({ onBack }: { onBack: () => void }) {
+export function SpaceSignup({ onBack, onSubmit }: { onBack: () => void; onSubmit?: (data: Registration) => Promise<void> }) {
   const id = useId()
   const [errors, setErrors] = useState<Errors>({})
   const [showPassword, setShowPassword] = useState(false)
   const [notice, setNotice] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const today = new Date()
   const maxDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (loading) return
     const form = event.currentTarget
     const data = new FormData(form)
     const value = (name: Field) => String(data.get(name) ?? '')
@@ -31,9 +35,17 @@ export function SpaceSignup({ onBack }: { onBack: () => void }) {
     else if (passwordLength < 12) next.password = 'Mật khẩu cần có từ 12 đến 128 ký tự.'
     setErrors(next)
     setNotice('')
+    setError('')
     const first = Object.keys(next)[0] as Field | undefined
     if (first) { (form.elements.namedItem(first) as HTMLInputElement)?.focus(); return }
-    setNotice('Thông tin đã hợp lệ. Đây là bản xem thử, tài khoản chưa được tạo.')
+    if (!onSubmit) { setNotice('Thông tin đã hợp lệ. Đây là bản xem thử, tài khoản chưa được tạo.'); return }
+    setLoading(true)
+    try {
+      await onSubmit({ username: value('username').trim(), full_name: value('full_name').trim(), email: value('email').trim(), phone: value('phone').trim(), date_of_birth: value('date_of_birth'), password: value('password') })
+      form.reset()
+      setNotice('Đã tạo tài khoản. Bạn có thể quay lại đăng nhập.')
+    } catch (error) { setError(errorText(error)) }
+    finally { setLoading(false) }
   }
 
   const fields: { name: Field; label: string; type: string; placeholder?: string; maxLength?: number; autoComplete?: string }[] = [
@@ -46,16 +58,17 @@ export function SpaceSignup({ onBack }: { onBack: () => void }) {
   ]
 
   return <form className="signup-form" onSubmit={submit} noValidate>
-    <div className="signup-fields">{fields.map(field => <div className="field" key={field.name}>
+    <fieldset disabled={loading} className="signup-fields">{fields.map(field => <div className="field" key={field.name}>
       <label htmlFor={`${id}-${field.name}`}>{field.label}</label>
       <div className={field.name === 'password' ? 'password-field' : undefined}>
         <input id={`${id}-${field.name}`} name={field.name} type={field.type} placeholder={field.placeholder} maxLength={field.maxLength} max={field.name === 'date_of_birth' ? maxDate : undefined} autoComplete={field.autoComplete} required aria-invalid={!!errors[field.name]} aria-describedby={errors[field.name] ? `${id}-${field.name}-error` : undefined} onChange={() => { setErrors(previous => ({ ...previous, [field.name]: undefined })); setNotice('') }} />
         {field.name === 'password' && <button type="button" className="password-toggle" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} aria-pressed={showPassword}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>}
       </div>
       {errors[field.name] && <p id={`${id}-${field.name}-error`} className="field-error" role="alert">{errors[field.name]}</p>}
-    </div>)}</div>
+    </div>)}</fieldset>
     <p className="signup-hint">Mật khẩu cần có từ 12 đến 128 ký tự.</p>
-    <button className="login-submit" type="submit">Tạo tài khoản <ArrowUpRight size={18} /></button>
+    {error && <p className="form-error" role="alert">{error}</p>}
+    <button className="login-submit" type="submit" disabled={loading}>{loading ? 'Đang tạo tài khoản…' : 'Tạo tài khoản'} <ArrowUpRight size={18} /></button>
     {notice && <p className="form-notice" role="status">{notice}</p>}
     <p className="signup-prompt">Đã có tài khoản? <button type="button" onClick={onBack}>Đăng nhập <ArrowUpRight size={13} /></button></p>
   </form>

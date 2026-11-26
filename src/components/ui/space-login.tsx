@@ -2,11 +2,15 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { ArrowLeft, ArrowUpRight, Check, Eye, EyeOff, LoaderCircle, MessageCircle, Mic, MoveUpRight, Pause, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SpaceSignup } from '@/components/ui/space-signup'
+import { errorText, type Registration } from '@/lib/api'
 
 export type DesignDirection = 'orbit' | 'deep-space' | 'signal' | 'daylight'
 export interface SpaceLoginProps {
   direction?: DesignDirection
   onSubmit?: (data: { username: string; password: string; rememberMe: boolean }) => Promise<void> | void
+  onRegister?: (data: Registration) => Promise<void>
+  onRecover?: (email: string) => Promise<void>
+  sessionOnly?: boolean
   className?: string
 }
 
@@ -37,7 +41,7 @@ function SpaceArtwork({ direction, paused }: { direction: DesignDirection; pause
   </div>
 }
 
-export function SpaceLogin({ direction = 'orbit', onSubmit, className }: SpaceLoginProps) {
+export function SpaceLogin({ direction = 'orbit', onSubmit, onRegister, onRecover, sessionOnly = false, className }: SpaceLoginProps) {
   const id = useId()
   const [mode, setMode] = useState<'login' | 'reset' | 'register'>('login')
   const [showPassword, setShowPassword] = useState(false)
@@ -69,14 +73,21 @@ export function SpaceLogin({ direction = 'orbit', onSubmit, className }: SpaceLo
     if (mode === 'login' && !passwordRef.current?.value) errors.password = 'Vui lòng nhập mật khẩu.'
     setFieldErrors(errors)
     if (errors.username || errors.password) { (errors.username ? usernameRef : passwordRef).current?.focus(); return }
-    if (mode === 'reset') { setNotice('Bản xem thử: yêu cầu khôi phục chưa được gửi. Khi kết nối máy chủ, bạn sẽ nhận được email nếu đã đăng ký.'); return }
+    if (mode === 'reset') {
+      if (!onRecover) { setNotice('Bản xem thử: yêu cầu khôi phục chưa được gửi.'); return }
+      setLoading(true)
+      try { await onRecover(username.value.trim()); setNotice('Đã tiếp nhận yêu cầu. Bạn sẽ nhận được email nếu địa chỉ đã đăng ký và dịch vụ email đã được cấu hình.') }
+      catch (error) { setError(errorText(error)) }
+      finally { setLoading(false) }
+      return
+    }
     if (!onSubmit) { setNotice('Thông tin đã hợp lệ. Đây là bản xem thử giao diện, chưa kết nối đăng nhập.'); return }
     setLoading(true)
     try {
       await onSubmit({ username: String(data.get('username')).trim(), password: String(data.get('password')), rememberMe: data.get('remember') === 'on' })
       setNotice('Đăng nhập thành công.')
-    } catch {
-      setError('Tài khoản hoặc mật khẩu không khớp. Vui lòng kiểm tra lại')
+    } catch (error) {
+      setError(errorText(error))
     } finally { setLoading(false) }
   }
 
@@ -94,9 +105,9 @@ export function SpaceLogin({ direction = 'orbit', onSubmit, className }: SpaceLo
         <div className="form-symbol"><MessageCircle size={24} strokeWidth={1.6} /><span /></div>
         <h2>{mode === 'login' ? 'Kết nối lại nhé.' : mode === 'reset' ? 'Tìm lại kết nối.' : 'Bắt đầu kết nối.'}</h2>
         <p className="form-intro">{mode === 'login' ? 'Đăng nhập và tiếp nối những câu chuyện.' : mode === 'reset' ? 'Nhập email đã đăng ký để khôi phục mật khẩu.' : 'Tạo tài khoản để bắt đầu những cuộc trò chuyện.'}</p>
-        {mode === 'register' ? <SpaceSignup onBack={() => changeMode('login')} /> : <form onSubmit={submit} noValidate>
+        {mode === 'register' ? <SpaceSignup onBack={() => changeMode('login')} onSubmit={onRegister} /> : <form onSubmit={submit} noValidate>
           <div className="field"><label htmlFor={`${id}-username`}>{mode === 'reset' ? 'Email' : 'Tên đăng nhập'}</label><input ref={usernameRef} id={`${id}-username`} key={mode} name={mode === 'reset' ? 'email' : 'username'} type={mode === 'reset' ? 'email' : 'text'} placeholder={mode === 'reset' ? 'ban@example.com' : 'Tên đăng nhập của bạn'} required maxLength={mode === 'reset' ? 100 : 50} autoComplete={mode === 'reset' ? 'email' : 'username'} disabled={loading} aria-invalid={!!fieldErrors.username} aria-describedby={fieldErrors.username ? `${id}-username-error` : undefined} onChange={() => { setError(''); setNotice(''); setFieldErrors(prev => ({ ...prev, username: undefined })) }} />{fieldErrors.username && <p id={`${id}-username-error`} className="field-error" role="alert">{fieldErrors.username}</p>}</div>
-          {mode === 'login' && <><div className="field"><label htmlFor={`${id}-password`}>Mật khẩu</label><div className="password-field"><input ref={passwordRef} id={`${id}-password`} name="password" type={showPassword ? 'text' : 'password'} placeholder="Nhập mật khẩu" autoComplete="current-password" required maxLength={128} disabled={loading} aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? `${id}-password-error` : undefined} onChange={() => { setError(''); setNotice(''); setFieldErrors(prev => ({ ...prev, password: undefined })) }} /><button type="button" className="password-toggle" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} aria-pressed={showPassword}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>{fieldErrors.password && <p id={`${id}-password-error`} className="field-error" role="alert">{fieldErrors.password}</p>}</div><div className="form-options"><label><input type="checkbox" name="remember" disabled={loading} />Ghi nhớ đăng nhập</label><button type="button" onClick={() => changeMode('reset')}>Quên mật khẩu?</button></div></>}
+          {mode === 'login' && <><div className="field"><label htmlFor={`${id}-password`}>Mật khẩu</label><div className="password-field"><input ref={passwordRef} id={`${id}-password`} name="password" type={showPassword ? 'text' : 'password'} placeholder="Nhập mật khẩu" autoComplete="current-password" required maxLength={128} disabled={loading} aria-invalid={!!fieldErrors.password} aria-describedby={fieldErrors.password ? `${id}-password-error` : undefined} onChange={() => { setError(''); setNotice(''); setFieldErrors(prev => ({ ...prev, password: undefined })) }} /><button type="button" className="password-toggle" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'} aria-pressed={showPassword}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>{fieldErrors.password && <p id={`${id}-password-error`} className="field-error" role="alert">{fieldErrors.password}</p>}</div><div className="form-options"><label>{!sessionOnly && <input type="checkbox" name="remember" disabled={loading} />}{sessionOnly ? 'Phiên đăng nhập chỉ lưu trong lần mở này' : 'Ghi nhớ đăng nhập'}</label><button type="button" onClick={() => changeMode('reset')}>Quên mật khẩu?</button></div></>}
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="login-submit" type="submit" disabled={loading}>{loading ? <><LoaderCircle className="spin" size={18} /> Đang đăng nhập…</> : <>{mode === 'login' ? 'Đăng nhập' : 'Gửi yêu cầu khôi phục'}<ArrowUpRight size={18} /></>}</button>
           {notice && <p className="form-notice" role="status">{notice}</p>}

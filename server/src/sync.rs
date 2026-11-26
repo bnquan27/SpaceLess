@@ -165,6 +165,7 @@ async fn upgrade(
 ) -> Response {
     let rx = state.realtime.0.subscribe();
     websocket
+        .protocols(["spaceless"])
         .max_message_size(4_096)
         .max_frame_size(4_096)
         .on_upgrade(move |socket| async move {
@@ -324,9 +325,12 @@ SELECT jsonb_build_object(
     'invite_code',CASE WHEN c.role IN ('CREATOR','MODERATOR') AND c.join_mode='PUBLIC_LINK' THEN c.invite_code END,
     'icon_url',CASE WHEN c.icon_upload_id IS NOT NULL THEN '/api/v1/images/'||c.icon_upload_id||'/url' END,
     'background_url',CASE WHEN c.background_upload_id IS NOT NULL THEN '/api/v1/images/'||c.background_upload_id||'/url' END,
-    'members',coalesce((SELECT jsonb_agg(jsonb_build_object('user_id',m.user_id::text,'role',d.role_type) ORDER BY m.user_id)
+    'members',coalesce((SELECT jsonb_agg(jsonb_build_object('user_id',m.user_id::text,'role',d.role_type,
+      'username',u.username,'full_name',u.full_name,
+      'avatar_url',CASE WHEN ud.avatar_upload_id IS NOT NULL THEN '/api/v1/images/'||ud.avatar_upload_id||'/url' END) ORDER BY m.user_id)
       FROM channel_members m JOIN role_definitions d ON d.role_id=m.role_id
-      JOIN users u ON u.id=m.user_id AND u.is_available WHERE m.channel_id=c.id),'[]')) ORDER BY c.id) FROM my_channels c),'[]'),
+      JOIN users u ON u.id=m.user_id AND u.is_available JOIN user_details ud ON ud.user_id=u.id
+      WHERE m.channel_id=c.id),'[]')) ORDER BY c.id) FROM my_channels c),'[]'),
   'categories',coalesce((SELECT jsonb_agg(jsonb_build_object('category_id',g.id::text,'channel_id',g.channel_id::text,
     'category_name',g.name,'position',g.position) ORDER BY g.channel_id,g.position,g.id) FROM room_categories g JOIN my_channels c ON c.id=g.channel_id),'[]'),
   'rooms',coalesce((SELECT jsonb_agg(view ORDER BY channel_id,category_id,position,id) FROM room_views WHERE kind<>'DM'),'[]'),

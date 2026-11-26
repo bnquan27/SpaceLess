@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { ForwardDialog, ReplyBanner, MessageQuote, type ComposeMessage } from './message-context';
 import { MessageActions } from "./message-actions";
 import { PreviewAvatar } from "./preview-images";
 import {
@@ -19,6 +20,8 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { ViewProps } from "./types";
+import { useBackend, useRoomMessages, messageView, initials } from "@/lib/workspace-backend";
+import { BackendAttachments, BackendFilePicker } from "./backend-files";
 
 const CHANNEL_METADATA: Record<
   string,
@@ -51,15 +54,25 @@ export const ChannelChatView: React.FC<ViewProps> = ({
   onNavigate,
   selectedChatChannel = "chung",
   onSelectChatChannel,
+  roomId,
+  channelId,
+  chatChannels = [],
 }) => {
+  const backend = useBackend();
+  const live = useRoomMessages(roomId);
+  const [files,setFiles] = useState<File[]>([]);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showCompactMembers, setShowCompactMembers] = useState(false);
   const [msgInput, setMsgInput] = useState("");
+  const [reply, setReply] = useState<ComposeMessage | null>(null);
+  const [forward, setForward] = useState<ComposeMessage | null>(null);
+  const composer = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (backend) { setFiles([]); setMsgInput(''); } },[roomId]);
 
-  const activeChannel = CHANNEL_METADATA[selectedChatChannel]
+  const activeChannel = backend ? selectedChatChannel : CHANNEL_METADATA[selectedChatChannel]
     ? selectedChatChannel
     : "chung";
-  const channelInfo = CHANNEL_METADATA[activeChannel];
+  const channelInfo = backend ? {tag:"Phòng trò chuyện",desc:"Tin nhắn được đồng bộ với máy chủ",notice:""} : CHANNEL_METADATA[activeChannel];
 
   const [messagesByChannel, setMessagesByChannel] = useState<
     Record<string, any[]>
@@ -131,17 +144,21 @@ export const ChannelChatView: React.FC<ViewProps> = ({
     ],
   });
 
-  const currentMessages = messagesByChannel[activeChannel] || [];
+  useEffect(() => { setReply(null); setForward(null); }, [activeChannel]);
 
-  const handleSend = (e: React.FormEvent) => {
+  const currentMessages = backend ? live.items.map(item => messageView(item, backend)) : messagesByChannel[activeChannel] || [];
+
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!msgInput.trim()) return;
+    if (!msgInput.trim() && !files.length) return;
+    if (backend) { if (await live.send(msgInput,files,reply ? String(reply.id) : undefined)) {setMsgInput("");setFiles([]);setReply(null);} return; }
     const newMsg = {
       id: Date.now(),
       sender: `Bạn (${currentUser})`,
       time: "Vừa xong",
       isMe: true,
       text: msgInput,
+        reply: reply ? {message_id:String(reply.id),room_id:'preview',sender_name:reply.sender,text:reply.text} : undefined,
     };
     setMessagesByChannel((prev) => ({
       ...prev,
@@ -152,6 +169,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
 
   return (
     <div className="relative flex-1 min-h-0 flex overflow-hidden">
+      {forward && <ForwardDialog message={forward} sourceRoom={roomId} onClose={() => setForward(null)} previewTargets={Object.keys(CHANNEL_METADATA).map(name => ({id:name,name,detail:'Nhóm Đồ Án - UI/UX'}))} onPreviewSend={(target, message, note) => setMessagesByChannel(previous => ({...previous,[target]:[...(previous[target] || []),{id:Date.now(),sender:currentUser,isMe:true,time:'Vừa xong',text:note,forwarded:message.forwarded || {message_id:String(message.id),room_id:'preview',sender_name:message.sender,text:message.text}}]}))}/>}
       <div className="flex-1 min-w-0 flex flex-col bg-[#15121d] overflow-hidden">
         {/* Subheader của Kênh */}
         <div className="min-h-15 px-4 xl:px-6 py-2 border-b border-white/10 bg-[#15121d]/90 flex flex-wrap items-center justify-between gap-2 shrink-0">
@@ -185,7 +203,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
 
           <div className="flex min-w-0 items-center gap-2">
             <div className="hidden lg:flex items-center overflow-x-auto gap-1 bg-[#1c172c] p-1 rounded-xl border border-white/10">
-              {Object.keys(CHANNEL_METADATA).map((chKey) => (
+              {(backend ? chatChannels.map(room => room.name) : Object.keys(CHANNEL_METADATA)).map((chKey) => (
                 <button
                   key={chKey}
                   onClick={() => onSelectChatChannel?.(chKey)}
@@ -228,7 +246,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
         </div>
 
         {/* Thanh Thông báo Ghim */}
-        <div className="bg-[#1c172c]/90 border-b border-white/10 px-4 lg:px-8 py-2 flex items-center justify-between text-xs shrink-0">
+        <div className={`${backend ? 'hidden' : ''} bg-[#1c172c]/90 border-b border-white/10 px-4 lg:px-8 py-2 flex items-center justify-between text-xs shrink-0`}>
           <span className="text-[#f4effa] flex items-center gap-2">
             <Pin className="w-3.5 h-3.5 text-[#c8b2f1] shrink-0" />
             <strong>Ghim:</strong> {channelInfo.notice}
@@ -246,13 +264,20 @@ export const ChannelChatView: React.FC<ViewProps> = ({
               <div className="h-[1px] flex-1 bg-white/10" />
             </div>
 
+            {backend && live.loading && <p role="status" className="text-sm text-[#b7aabe]">Đang tải tin nhắn…</p>}
+            {backend && live.error && <p role="alert" className="text-sm text-[#ffa8b5]">{live.error}</p>}
+            {backend && !live.loading && !live.items.length && <p className="text-sm text-[#b7aabe]">Chưa có tin nhắn. Hãy bắt đầu cuộc trò chuyện.</p>}
+            {backend && live.hasMore && <button disabled={live.loadingOlder} onClick={() => void live.older()} className="workspace-action rounded-xl border border-white/15 px-4 py-2 text-sm">{live.loadingOlder ? 'Đang tải…' : 'Xem tin nhắn trước'}</button>}
             {currentMessages.map((m) => (
               <MessageActions
                 key={m.id}
                 messageId={String(m.id)}
                 isMe={m.isMe}
-                onDelete={() => setMessagesByChannel(previous => ({ ...previous, [activeChannel]: previous[activeChannel].filter(message => message.id !== m.id) }))}
-                text={m.text} onReply={text => setMsgInput(`> ${text}\n`)}
+                onDelete={() => backend ? void live.remove(String(m.id)) : setMessagesByChannel(previous => ({ ...previous, [activeChannel]: previous[activeChannel].filter(message => message.id !== m.id) }))}
+                onReaction={backend ? emoji => live.react(String(m.id), emoji) : undefined}
+                reactionCounts={backend ? live.items.find(item => item.message_id === m.id)?.reaction_counts : undefined}
+                myReaction={backend ? live.items.find(item => item.message_id === m.id)?.my_reaction : undefined}
+                text={m.text} onReply={() => { setReply(m); composer.current?.focus(); }} onForward={() => setForward(m)}
               >
                 <div className="text-xs text-[#b7aabe] mb-1.5 px-1 flex items-center gap-1.5">
                   <strong className="text-[#f4effa]">{m.sender}</strong>
@@ -266,9 +291,12 @@ export const ChannelChatView: React.FC<ViewProps> = ({
                       : "bg-[#1c172c] border border-white/10 text-[#f4effa] rounded-bl-none"
                   }`}
                 >
-                  {m.text}
+                  <MessageQuote context={m.reply}/>
+                  <MessageQuote context={m.forwarded} forwarded/>
+                  <span className="whitespace-pre-wrap">{m.text}</span>
+                  {backend && <BackendAttachments attachments={live.items.find(item => item.message_id === m.id)?.attachments || []}/>}
 
-                  {m.file && (
+                  {!backend && m.file && (
                     <div className="mt-3 p-3 rounded-xl bg-[#15121d] border border-white/10 flex items-center justify-between gap-4">
                       <div className="flex items-center gap-2.5">
                         <FolderGit2 className="w-4 h-4 text-[#c8b2f1] shrink-0" />
@@ -304,6 +332,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
           className="px-3 lg:px-8 py-2 sm:py-4 border-t border-white/10 bg-[#120f19] shrink-0"
         >
           <div className="max-w-3xl mx-auto rounded-2xl bg-[#1c172c] border border-white/15 p-3 space-y-2 shadow-lg">
+            {reply && <ReplyBanner message={reply} onCancel={() => {setReply(null);composer.current?.focus();}}/>}
             <div className="flex flex-wrap items-center justify-between gap-x-2 text-xs text-[#b7aabe]">
               <div className="flex items-center gap-1">
                 <button
@@ -331,16 +360,20 @@ export const ChannelChatView: React.FC<ViewProps> = ({
 
             <input
               type="text"
+              ref={composer}
               value={msgInput}
+              maxLength={4000}
+              disabled={!!backend && (!roomId || live.loading || live.sending || !!live.error)}
               aria-label={`Nhắn tin tới #${activeChannel}`}
               onChange={(e) => setMsgInput(e.target.value)}
-              placeholder={`Nhắn tin tới #${activeChannel}...`}
+              placeholder={reply ? `Nhắn @${reply.sender}` : `Nhắn tin tới #${activeChannel}...`}
               className="w-full bg-[#15121d]/80 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-[#f4effa] placeholder-[#b7aabe] focus:border-[#c8b2f1] transition"
             />
 
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-1 text-[#b7aabe]">
-                <button type="button" aria-label="Đính kèm tệp" className="workspace-icon-button rounded-md hover:bg-white/10 hover:text-[#c8b2f1]">
+                {backend && <BackendFilePicker files={files} onChange={setFiles} disabled={!roomId || live.loading || live.sending}/>}
+                <button hidden={!!backend} type="button" aria-label="Đính kèm tệp" className="workspace-icon-button rounded-md hover:bg-white/10 hover:text-[#c8b2f1]">
                   <Paperclip className="w-4 h-4 shrink-0" />
                 </button>
                 <button type="button" aria-label="Chèn biểu cảm" className="workspace-icon-button rounded-md hover:bg-white/10 hover:text-[#c8b2f1]">
@@ -352,6 +385,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
               </div>
               <button
                 type="submit"
+                disabled={!!backend && (!roomId || live.loading || live.sending || !!live.error || (!msgInput.trim() && !files.length))}
                 className="workspace-action px-4 py-2 rounded-xl bg-[#c8b2f1] hover:bg-[#d8c7f7] text-[#271737] font-bold flex items-center gap-1.5 transition shadow"
               >
                 Gửi <Send className="w-3.5 h-3.5 shrink-0" />
@@ -367,7 +401,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#a2d9d3]">
-                TRỰC TUYẾN (5)
+                {backend ? `THÀNH VIÊN (${backend.data.channels.find(channel => channel.channel_id === channelId)?.members.length || 0})` : 'TRỰC TUYẾN (5)'}
               </h4>
               <Users className="hidden xl:block w-3.5 h-3.5 text-[#b7aabe] shrink-0" />
               <button onClick={() => setShowCompactMembers(false)} aria-label="Đóng danh sách thành viên" className="xl:hidden p-2 rounded-lg hover:bg-white/10">
@@ -376,7 +410,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
             </div>
 
             <div className="space-y-2.5">
-              {[
+              {(backend ? (backend.data.channels.find(channel => channel.channel_id === channelId)?.members || []).map(member => ({init:initials(member.full_name),name:member.full_name,highlight:member.user_id === backend.data.profile.user_id})) : [
                 { init: "TH", name: "Thu Hà" },
                 { init: "QB", name: "Quốc Bảo" },
                 { init: "HL", name: "Hoàng Long" },
@@ -386,7 +420,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
                   name: `${currentUser} (Bạn)`,
                   highlight: true,
                 },
-              ].map((u, i) => (
+              ]).map((u, i) => (
                 <div
                   key={i}
                   className={`p-3 rounded-xl border flex items-center justify-between ${
@@ -398,7 +432,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-[#2a223d] text-[#c8b2f1] text-xs font-bold grid place-items-center shrink-0 relative">
                       <PreviewAvatar name={u.name} initials={u.init} />
-                      <span className="w-2 h-2 rounded-full bg-[#a2d9d3] absolute bottom-0 right-0" />
+                      <span hidden={!!backend} className="w-2 h-2 rounded-full bg-[#a2d9d3] absolute bottom-0 right-0" />
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-semibold text-[#f4effa] truncate">

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { User, Shield, MessageSquare, Bell, Mic, Monitor, Accessibility, Settings, Globe, LogOut, X, Search, LockKeyhole } from "lucide-react";
 import { PreviewAvatar } from "./preview-images";
+import { useBackend } from "@/lib/workspace-backend";
 
 const groups = [
   { name: "Tài khoản", items: [
@@ -23,6 +24,9 @@ export function UserSettingsView({ currentUser, onClose, onLogout }: {
   onClose: () => void;
   onLogout?: () => void;
 }) {
+  const backend = useBackend();
+  const [saving,setSaving] = useState(false);
+  const [saved,setSaved] = useState(false);
   const [section, setSection] = useState("Thông tin tài khoản");
   const [search, setSearch] = useState("");
   const [locale, setLocale] = useState("vi-VN");
@@ -81,11 +85,12 @@ export function UserSettingsView({ currentUser, onClose, onLogout }: {
         <main className="min-h-0 flex-1 overflow-y-auto px-5 py-8 sm:px-10 lg:px-16 lg:py-12">
           <div className="mx-auto max-w-2xl">
             <h1 className="text-2xl font-semibold tracking-tight">{section}</h1>
-            <p className="mt-2 text-sm text-[#b7aabe]">Bản xem thử cài đặt người dùng</p>
+            <p className="mt-2 text-sm text-[#b7aabe]">{backend ? 'Hồ sơ được tải từ máy chủ' : 'Bản xem thử cài đặt người dùng'}</p>
             {section === "Thông tin tài khoản" ? <>
               <div className="mt-8 divide-y divide-white/10">
-                {[["Tên hiển thị", currentUser], ["Tên đăng nhập", "Chưa có thông tin"], ["Email", "Chưa có thông tin"], ["Số điện thoại", "Chưa có thông tin"]].map(([label, value]) => <div key={label} className="flex flex-wrap items-center justify-between gap-3 py-5"><span className="text-sm font-medium">{label}</span><span className="text-sm text-[#c4b8ce]">{value}</span></div>)}
+                {[["Tên hiển thị", currentUser], ["Tên đăng nhập", backend?.data.profile.username || "Chưa có thông tin"], ["Email", backend?.data.profile.email || "Chưa có thông tin"], ["Số điện thoại", backend?.data.profile.phone || "Chưa có thông tin"]].map(([label, value]) => <div key={label} className="flex flex-wrap items-center justify-between gap-3 py-5"><span className="text-sm font-medium">{label}</span><span className="text-sm text-[#c4b8ce]">{value}</span></div>)}
               </div>
+              {backend && <form className="mt-8 space-y-4 border-t border-white/10 pt-6" onSubmit={async event => {event.preventDefault();if(saving)return;setSaving(true);setSaved(false);const values=Object.fromEntries(new FormData(event.currentTarget));try{await backend.api.request('/users/me','PATCH',values);await backend.refresh();setSaved(true);}catch(error){backend.report(error);}finally{setSaving(false);}}}><h2 className="text-lg font-semibold">Chỉnh sửa hồ sơ</h2><fieldset disabled={saving} className="space-y-4">{[{name:'full_name',label:'Họ và tên',type:'text',value:backend.data.profile.full_name},{name:'email',label:'Email mới',type:'email',value:backend.data.profile.email},{name:'phone',label:'Số điện thoại mới',type:'tel',value:backend.data.profile.phone}].map(field => <label className="block text-sm" key={field.name}>{field.label}<input name={field.name} type={field.type} required defaultValue={field.value} maxLength={100} className={fieldClass}/></label>)}</fieldset><button disabled={saving} className="rounded-xl bg-[#c8b2f1] px-4 py-2 text-sm font-semibold text-[#271737]">{saving?'Đang lưu…':'Lưu hồ sơ'}</button>{saved&&<p role="status" className="text-sm text-[#a2d9d3]">Đã lưu hồ sơ trên máy chủ.</p>}</form>}
               <section className="mt-8 border-t border-white/10 pt-8"><h2 className="flex items-center gap-2 text-xl font-semibold"><LockKeyhole size={20}/>Mật khẩu và bảo mật</h2><div className="mt-5 flex items-center justify-between gap-4"><span className="text-sm">Mật khẩu</span><button disabled title="Chưa kết nối cập nhật mật khẩu" className="rounded-lg bg-white/10 px-4 py-2 text-sm disabled:cursor-default disabled:opacity-50">Thay đổi mật khẩu</button></div></section>
             </> : section === "Ngôn ngữ và thời gian" ? <div className="mt-8 space-y-6">
               <p className="text-sm leading-6 text-[#c4b8ce]">Các lựa chọn dưới đây áp dụng cho mẫu ngày giờ trong trang này.</p>

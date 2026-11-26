@@ -34,11 +34,19 @@ function PreviewPhoto({ sheet, index }: { sheet: "servers" | "avatars"; index: n
 }
 
 export function PreviewServerPhoto({ id }: { id: string }) {
+  const backend = useBackend();
+  if (backend) return <BackendPhoto path={backend.data.channels.find(channel => channel.channel_id === id)?.icon_url}/>;
   const tile = serverTiles.get(id);
   return tile === undefined ? null : <PreviewPhoto sheet="servers" index={tile} />;
 }
 
 export function PreviewAvatar({ name, initials }: { name: string; initials: string }) {
+  const backend = useBackend();
+  if (backend) {
+    const clean = name.replace(/ \(Bạn\)$/,'');
+    const person = [backend.data.profile,...backend.data.friends,...backend.data.channels.flatMap(channel => channel.members)].find(person => person.full_name === clean);
+    return <span aria-hidden="true" className="absolute inset-0 grid place-items-center rounded-[inherit]">{initials}<BackendPhoto path={person?.avatar_url}/></span>;
+  }
   const tile = portraitTiles.get(name.replace(/ \(Bạn\)$/, ""));
   return (
     <span aria-hidden="true" className="absolute inset-0 grid place-items-center rounded-[inherit]">
@@ -46,4 +54,18 @@ export function PreviewAvatar({ name, initials }: { name: string; initials: stri
       {tile !== undefined && <PreviewPhoto sheet="avatars" index={tile} />}
     </span>
   );
+}
+import { useEffect, useState } from 'react';
+import { useBackend } from '@/lib/workspace-backend';
+
+
+function BackendPhoto({path}: {path?:string|null}) {
+  const backend = useBackend();
+  const [src,setSrc] = useState('');
+  useEffect(() => {
+    let active = true; let objectUrl=''; setSrc('');
+    if (backend && path) void backend.api.request<{url:string}>(path.replace(/^\/api\/v1/,'')).then(value => backend.api.download(value.url)).then(blob => { if (active) { objectUrl=URL.createObjectURL(blob); setSrc(objectUrl); } }).catch(() => {});
+    return () => {active=false;if(objectUrl)URL.revokeObjectURL(objectUrl);};
+  },[backend?.api,path]);
+  return src ? <img src={src} alt="" className="pointer-events-none absolute inset-0 h-full w-full rounded-[inherit] object-cover"/> : null;
 }

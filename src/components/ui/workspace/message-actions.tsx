@@ -4,14 +4,19 @@ import { SmilePlus, MoreHorizontal, Copy, Reply, Forward, Pin, Bookmark, Bell, H
 
 const reactions = ["❤️", "👍", "😂", "🔥"];
 
-export function MessageActions({ text, messageId, isMe, onReply, onPin, onDelete, children }: {
+export function MessageActions({ text, messageId, isMe, onReply, onForward, onPin, onDelete, children, onReaction, reactionCounts, myReaction, readOnly = false }: {
   text: string;
   messageId: string;
   isMe: boolean;
   onReply: (text: string) => void;
+  onForward?: () => void;
   onPin?: (text: string, pinned: boolean) => void;
   onDelete: () => void;
   children: ReactNode;
+  onReaction?: (emoji: string) => Promise<void>;
+  reactionCounts?: Record<string, number>;
+  myReaction?: string | null;
+  readOnly?: boolean;
 }) {
   const [reaction, setReaction] = useState("");
   const [pinned, setPinned] = useState(false);
@@ -50,7 +55,7 @@ export function MessageActions({ text, messageId, isMe, onReply, onPin, onDelete
     };
   }, [popup]);
 
-  const react = (emoji: string) => { setReaction(previous => previous === emoji ? "" : emoji); setPopup(null); };
+  const react = (emoji: string) => { if (readOnly) return; if (onReaction) void onReaction(emoji); else setReaction(previous => previous === emoji ? "" : emoji); setPopup(null); };
   const action = (callback: () => void) => { callback(); setPopup(null); };
   const open = (button: HTMLButtonElement, picker = false) => {
     const box = button.getBoundingClientRect();
@@ -66,11 +71,12 @@ export function MessageActions({ text, messageId, isMe, onReply, onPin, onDelete
     onContextMenu={event => { event.preventDefault(); setPopup({ x: event.clientX, y: event.clientY, picker: false }); }}>
     {children}
     <div role="toolbar" aria-label="Tương tác tin nhắn" className="absolute right-2 top-0 z-10 flex items-center gap-0.5 rounded-lg border border-white/15 bg-[#2b2338] p-1 shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto max-sm:opacity-100 max-sm:pointer-events-auto">
-      {reactions.slice(0, 3).map(emoji => <button key={emoji} className="grid h-8 w-8 place-items-center rounded-md hover:bg-white/10" aria-label={`Biểu cảm ${emoji}`} onClick={() => react(emoji)}>{emoji}</button>)}
+      {reactions.slice(0, 3).map(emoji => <button key={emoji} className="grid h-8 w-8 place-items-center rounded-md hover:bg-white/10" disabled={readOnly} aria-label={`Biểu cảm ${emoji}`} onClick={() => react(emoji)}>{emoji}</button>)}
       <button aria-label="Thêm biểu cảm" className="workspace-icon-button rounded-md hover:bg-white/10" onClick={event => open(event.currentTarget, true)}><SmilePlus size={17}/></button>
-      <button aria-label="Trả lời" className="workspace-icon-button rounded-md hover:bg-white/10" onClick={() => onReply(text)}><Reply size={17}/></button>
+      <button aria-label="Trả lời" disabled={readOnly} className="workspace-icon-button rounded-md hover:bg-white/10" onClick={() => onReply(text)}><Reply size={17}/></button>
       <button ref={moreRef} aria-label="Thao tác tin nhắn" aria-haspopup="menu" aria-expanded={Boolean(popup)} className="workspace-icon-button rounded-md hover:bg-white/10" onClick={event => open(event.currentTarget)}><MoreHorizontal size={17}/></button>
     </div>
+    {reactionCounts && <div className="mt-2 flex flex-wrap gap-2 text-xs">{Object.entries(reactionCounts).map(([emoji,count]) => <button disabled={readOnly} key={emoji} aria-pressed={myReaction === emoji} className="rounded-full border border-[#c8b2f1]/30 bg-[#c8b2f1]/15 px-2 py-1" onClick={() => react(emoji)}>{emoji} {count}</button>)}</div>}
     {(reaction || pinned || saved || unread) && <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#c8b2f1]">
       {reaction && <button className="rounded-full bg-[#c8b2f1]/20 px-2 py-1" aria-label="Gỡ biểu cảm" onClick={() => setReaction("")}>{reaction} 1</button>}
       {pinned && <span>Đã ghim</span>}{saved && <span>Đã lưu</span>}{unread && <span>Chưa đọc</span>}
@@ -87,22 +93,22 @@ export function MessageActions({ text, messageId, isMe, onReply, onPin, onDelete
       }}
       className="fixed z-[100] w-[248px] max-w-[calc(100vw-16px)] max-h-[calc(100dvh-16px)] overflow-y-auto rounded-xl border border-white/15 bg-[#251e30] p-2 text-[#eee7f5] shadow-[0_12px_36px_#0008]"
       style={{ left: popup.x, top: popup.y }}>
-      <div className="flex justify-between gap-1 p-1">{(popup.picker ? [...reactions, "🎉"] : reactions).map(emoji => <button key={emoji} role="menuitem" className="grid h-10 flex-1 place-items-center rounded-lg bg-white/5 text-lg hover:bg-white/15" aria-label={`Biểu cảm ${emoji}`} onClick={() => react(emoji)}>{emoji}</button>)}</div>
+      <div className="flex justify-between gap-1 p-1">{(popup.picker ? [...reactions, "🎉"] : reactions).map(emoji => <button key={emoji} role="menuitem" className="grid h-10 flex-1 place-items-center rounded-lg bg-white/5 text-lg hover:bg-white/15" disabled={readOnly} aria-label={`Biểu cảm ${emoji}`} onClick={() => react(emoji)}>{emoji}</button>)}</div>
       {!popup.picker && <>
         <button role="menuitem" className={itemClass} onClick={() => setPopup({ ...popup, picker: true })}><SmilePlus size={17}/>Thêm biểu cảm</button>
         <div className="my-1 border-t border-white/10"/>
-        <button role="menuitem" className={itemClass} onClick={() => action(() => onReply(text))}><Reply size={17}/>Trả lời</button>
-        <button role="menuitem" className={itemClass} onClick={() => action(() => onReply(`Chuyển tiếp: ${text}`))}><Forward size={17}/>Chuyển tiếp</button>
+        <button role="menuitem" className={itemClass} disabled={readOnly} onClick={() => action(() => onReply(text))}><Reply size={17}/>Trả lời</button>
+        <button role="menuitem" className={itemClass} disabled={!onForward} onClick={() => action(() => onForward?.())}><Forward size={17}/>Chuyển tiếp</button>
         <div className="my-1 border-t border-white/10"/>
-        <button role="menuitem" className={itemClass} onClick={() => action(() => { onPin?.(text, !pinned); setPinned(!pinned); })}><Pin size={17}/>{pinned ? "Bỏ ghim" : "Ghim tin nhắn"}</button>
-        <button role="menuitem" className={itemClass} onClick={() => action(() => setSaved(!saved))}><Bookmark size={17}/>{saved ? "Bỏ lưu tin nhắn" : "Lưu tin nhắn"}</button>
+        <button role="menuitem" className={itemClass} disabled={!!onReaction || readOnly} onClick={() => action(() => { onPin?.(text, !pinned); setPinned(!pinned); })}><Pin size={17}/>{pinned ? "Bỏ ghim" : "Ghim tin nhắn"}</button>
+        <button role="menuitem" className={itemClass} disabled={!!onReaction || readOnly} onClick={() => action(() => setSaved(!saved))}><Bookmark size={17}/>{saved ? "Bỏ lưu tin nhắn" : "Lưu tin nhắn"}</button>
         <button role="menuitem" disabled title="Chưa kết nối nhắc nhở" className={itemClass}><Bell size={17}/>Tạo thông báo nhắc nhở</button>
-        <button role="menuitem" className={itemClass} onClick={() => action(() => setUnread(!unread))}><Headphones size={17}/>Đánh dấu {unread ? "đã đọc" : "chưa đọc"}</button>
+        <button role="menuitem" className={itemClass} disabled={!!onReaction || readOnly} onClick={() => action(() => setUnread(!unread))}><Headphones size={17}/>Đánh dấu {unread ? "đã đọc" : "chưa đọc"}</button>
         <button role="menuitem" disabled title="Chưa có liên kết tin nhắn trong bản xem thử" className={itemClass}><Link2 size={17}/>Sao chép liên kết tin nhắn</button>
         <button role="menuitem" className={itemClass} onClick={() => action(() => setNotice(reaction ? `Biểu cảm của bạn: ${reaction} · 1 lượt` : "Chưa có biểu cảm."))}><Info size={17}/>Xem thông tin tương tác</button>
         <button role="menuitem" className={itemClass} onClick={() => action(() => { void copy(text); })}><Copy size={17}/>Sao chép nội dung</button>
         <div className="my-1 border-t border-white/10"/>
-        {isMe && <button role="menuitem" className={`${itemClass} text-[#ff9ba9]`} onClick={() => action(onDelete)}><Trash2 size={17}/>Xóa tin nhắn</button>}
+        {isMe && <button role="menuitem" className={`${itemClass} text-[#ff9ba9]`} disabled={readOnly} onClick={() => action(onDelete)}><Trash2 size={17}/>Xóa tin nhắn</button>}
         <button role="menuitem" disabled title="Chưa kết nối báo cáo" className={`${itemClass} text-[#ff9ba9]`}><Flag size={17}/>Báo cáo tin nhắn</button>
         <div className="my-1 border-t border-white/10"/>
         <button role="menuitem" className={itemClass} onClick={() => action(() => { void copy(messageId); })}><Fingerprint size={17}/>Sao chép ID tin nhắn</button>

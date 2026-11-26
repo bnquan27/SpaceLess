@@ -38,6 +38,7 @@ import { HomeHubView, HomeServerItem } from "./workspace/home-hub-view";
 import { PreviewAvatar, PreviewServerPhoto } from "./workspace/preview-images";
 import { ShareVideo } from "./workspace/share-video";
 import { useScreenShare } from "@/lib/use-screen-share";
+import { useBackend, initials } from "@/lib/workspace-backend";
 
 export interface SpaceWorkspaceProps {
   currentUser?: string;
@@ -64,11 +65,12 @@ export function SpaceWorkspace({
   currentUser = "Nguyễn Minh",
   onLogout,
 }: SpaceWorkspaceProps) {
+  const backend = useBackend();
   // 1. VỊ TRÍ ĐẦU TIÊN KHI VÀO APP LÀ SẢNH CHỜ (isInLobby = true)
   const [isInLobby, setIsInLobby] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
   // Lưu kênh đang truy cập (kể cả khi bấm sang DM thì kênh này vẫn hiển thị trên Topbar)
-  const [activeServerId, setActiveServerId] = useState<string>("uiux");
+  const [activeServerId, setActiveServerId] = useState<string>(backend?.data.channels[0]?.channel_id || "uiux");
   const [userSettingsOpen, setUserSettingsOpen] = useState(false);
   const [dmFriendName, setDmFriendName] = useState<string | undefined>();
   const [recentServerIds, setRecentServerIds] = useState<string[]>([]);
@@ -80,7 +82,7 @@ export function SpaceWorkspace({
 
   // State ẩn/hiện thanh Dock bằng nút mũi tên (Mặc định ẩn để không che thanh chat)
 
-  const [joinedServers, setJoinedServers] = useState<ServerExtendedItem[]>([
+  const [previewServers, setJoinedServers] = useState<ServerExtendedItem[]>([
     {
       id: "uiux",
       name: "Nhóm Đồ Án - UI/UX",
@@ -134,7 +136,7 @@ export function SpaceWorkspace({
     },
   ]);
 
-  const [chatChannels, setChatChannels] = useState<ChatChannelItem[]>([
+  const [previewChatChannels, setChatChannels] = useState<ChatChannelItem[]>([
     {
       id: "c1",
       name: "chung",
@@ -160,7 +162,7 @@ export function SpaceWorkspace({
     },
   ]);
 
-  const [voiceRooms, setVoiceRooms] = useState<VoiceRoomItem[]>([
+  const [previewVoiceRooms, setVoiceRooms] = useState<VoiceRoomItem[]>([
     {
       id: "v1",
       name: "Sảnh Chill & Âm nhạc",
@@ -185,7 +187,7 @@ export function SpaceWorkspace({
     useState<string>("Phòng Họp Nhóm");
   const sharing = useScreenShare(activeServerId, selectedVoiceRoom);
   const [viewedShareOwner, setViewedShareOwner] = useState(currentUser);
-  const screenShares = sharing.stream ? [{ owner: currentUser, stream: sharing.stream, isLocal: true }] : [];
+  const screenShares = backend ? backend.voice.shares : sharing.stream ? [{ owner: currentUser, stream: sharing.stream, isLocal: true }] : [];
 
   // States điều khiển Dropdown & Popup
   const [serverDropdownOpen, setServerDropdownOpen] = useState(false);
@@ -201,7 +203,7 @@ export function SpaceWorkspace({
   >(null);
 
   // Danh sách thông báo & Popup Toast thông báo góc màn hình
-  const [notifications, setNotifications] = useState<NotificationItem[]>([
+  const [notifications, setNotifications] = useState<NotificationItem[]>(backend ? [] : [
     {
       id: "n1",
       type: "dm",
@@ -235,6 +237,7 @@ export function SpaceWorkspace({
 
   // Tự động hiện 1 Popup thông báo mẫu sau khi vào app 2.5 giây
   useEffect(() => {
+    if (backend) return;
     const timer = setTimeout(() => {
       setToastPopup({
         id: "toast_init",
@@ -301,9 +304,13 @@ export function SpaceWorkspace({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const currentServer =
-    joinedServers.find((s) => s.id === activeServerId) || joinedServers[0];
-  const isCreator = currentServer?.isOwner ?? false;
+  const joinedServers: ServerExtendedItem[] = backend ? backend.data.channels.map(channel => ({ id: channel.channel_id, name: channel.channel_name, shortName: initials(channel.channel_name), category: "Kênh của bạn", desc: channel.description || "", membersCount: channel.members.length, onlineCount: 0, icon: LayoutGrid, serverCode: channel.channel_id, inviteLink: channel.invite_code || "", isOwner: channel.role === "CREATOR" || channel.role === "MODERATOR" })) : previewServers;
+  const currentServer = joinedServers.find(s => s.id === activeServerId) || joinedServers[0] || { id: "", name: "Chưa có kênh", shortName: "", category: "", membersCount: 0, onlineCount: 0, icon: LayoutGrid, serverCode: "", inviteLink: "", isOwner: false };
+  const chatChannels: ChatChannelItem[] = backend ? backend.data.rooms.filter(room => room.channel_id === currentServer.id && room.type === "TEXT").map(room => ({ id: room.room_id, name: room.room_name, sub: room.unread_count ? `${room.unread_count} tin chưa đọc` : "Phòng trò chuyện", badge: room.unread_count ? String(room.unread_count) : undefined })) : previewChatChannels;
+  const voiceRooms: VoiceRoomItem[] = backend ? backend.data.rooms.filter(room => room.channel_id === currentServer.id && room.type === "VOICE").map(room => ({ id: room.room_id, name: room.room_name, sub: `${backend.data.voice_states.filter(state => state.room_id === room.room_id && state.state === "CONNECTED").length} người trong phòng` })) : previewVoiceRooms;
+  const isCreator = currentServer.isOwner;
+  const dmSource = [...navHistory].reverse().find(entry => entry.isInLobby || entry.tab !== "dm");
+  const showChannelControls = !isInLobby && (activeTab !== "dm" || dmSource?.isInLobby === false);
 
   // Hàm chuyển trang có lưu lịch sử để bấm nút Quay lại (Back)
   const navigateWithHistory = (
@@ -336,6 +343,7 @@ export function SpaceWorkspace({
   };
 
   const toggleRoleForDemo = () => {
+    if (backend) return;
     setJoinedServers((prev) =>
       prev.map((srv) =>
         srv.id === currentServer.id ? { ...srv, isOwner: !srv.isOwner } : srv,
@@ -345,6 +353,10 @@ export function SpaceWorkspace({
 
   const handleUpdateServerProfile = (newName: string, newDesc: string) => {
     if (!isCreator) return;
+    if (backend) {
+      void backend.api.request(`/channels/${currentServer.id}`, "PATCH", { channel_name: newName.trim(), description: newDesc }).then(backend.refresh).catch(backend.report);
+      return;
+    }
     setJoinedServers((prev) =>
       prev.map((srv) =>
         srv.id === currentServer.id
@@ -354,9 +366,17 @@ export function SpaceWorkspace({
     );
   };
 
-  const handleCreateChannelOrRoom = (e: React.FormEvent) => {
+  const handleCreateChannelOrRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isCreator || !newChannelName.trim() || !createChannelModal) return;
+    if (backend) {
+      if (newChannelPrivate) { backend.report(new Error("Phòng riêng cần danh sách thành viên. Hãy tạo phòng công khai trước.")); return; }
+      try {
+        await backend.api.request(`/channels/${currentServer.id}/rooms`, "POST", { room_name: newChannelName.trim(), type: createChannelModal === "chat" ? "TEXT" : "VOICE", is_private: false });
+        await backend.refresh(); setNewChannelName(""); setNewChannelDesc(""); setCreateChannelModal(null);
+      } catch (error) { backend.report(error); }
+      return;
+    }
 
     if (createChannelModal === "chat") {
       const slug = newChannelName.trim().toLowerCase().replace(/\s+/g, "-");
@@ -387,6 +407,11 @@ export function SpaceWorkspace({
     setCreateChannelModal(null);
   };
 
+  const openChannelSettings = () => {
+    if (backend) { backend.report(new Error("Trang quản trị kênh chưa được nối đầy đủ với API. Hồ sơ cá nhân có thể sửa trong cài đặt người dùng.")); return; }
+    setSettingsModalOpen(true);
+  };
+
   const handleCopyServerId = () => {
     navigator.clipboard?.writeText(currentServer.serverCode);
     setCopiedServerId(true);
@@ -396,7 +421,7 @@ export function SpaceWorkspace({
     }, 1000);
   };
 
-  const friendsList = [
+  const friendsList = backend ? backend.data.friends.map(person => ({ id: person.user_id, init: initials(person.full_name), name: person.full_name, username: `@${person.username}`, status: "Bạn bè" })) : [
     {
       id: "f1",
       init: "HĐ",
@@ -482,7 +507,7 @@ export function SpaceWorkspace({
       <header className="min-h-14 px-3 sm:px-6 border-b border-white/10 bg-[#120f19] flex items-center justify-between gap-2 sm:gap-4 shrink-0 z-50">
         <div className="flex min-w-0 items-center gap-2.5">
           {/* NÚT QUAY LẠI TRANG TRƯỚC PHẦN CÀI ĐẶT MÁY CHỦ */}
-          {!isInLobby && <button
+          {showChannelControls && <button
             onClick={handleGoBack}
             title="Quay lại trang trước"
             className="p-2 rounded-xl bg-[#1c172c] hover:bg-[#261e3a] border border-white/10 text-[#b7aabe] hover:text-[#f4effa] transition"
@@ -490,8 +515,8 @@ export function SpaceWorkspace({
             <ArrowLeft className="w-4 h-4 shrink-0" />
           </button>}
 
-          {/* NÚT TÊN MÁY CHỦ HIỆN TẠI (Luôn hiện kênh đang truy cập kể cả khi bấm sang DM) */}
-          <div className={isInLobby ? "hidden" : "relative min-w-0 hidden sm:block"} ref={dropdownRef}>
+          {/* Chỉ giữ ngữ cảnh kênh khi DM được mở từ một trang trong kênh. */}
+          <div className={showChannelControls ? "relative min-w-0 hidden sm:block" : "hidden"} ref={dropdownRef}>
             <button
               onClick={() => setServerDropdownOpen((v) => !v)}
               aria-expanded={serverDropdownOpen}
@@ -544,7 +569,7 @@ export function SpaceWorkspace({
                   onClick={() => {
                     setServerDropdownOpen(false);
                     setSettingsInitialMenu(0);
-                    setSettingsModalOpen(true);
+                    openChannelSettings();
                   }}
                   className="w-full px-3 py-2.5 rounded-xl text-xs font-medium text-[#f4effa] hover:bg-white/10 flex items-center justify-between transition"
                 >
@@ -568,7 +593,7 @@ export function SpaceWorkspace({
                       onClick={() => {
                         setServerDropdownOpen(false);
                         setSettingsInitialMenu(2);
-                        setSettingsModalOpen(true);
+                        openChannelSettings();
                       }}
                       className="w-full px-3 py-2 rounded-xl text-xs font-medium text-[#f4effa] hover:bg-white/10 flex items-center justify-between transition"
                     >
@@ -686,9 +711,9 @@ export function SpaceWorkspace({
               }`}
             >
               <MessageSquare className="w-4 h-4 shrink-0" />
-              <span className="w-4 h-4 rounded-full bg-[#a2d9d3] text-[#15121d] text-xs font-bold grid place-items-center absolute -top-1 -right-1 border border-[#120f19]">
-                2
-              </span>
+              {(!backend || backend.data.dms.some(dm => dm.unread_count > 0)) && <span className="w-4 h-4 rounded-full bg-[#a2d9d3] text-[#15121d] text-xs font-bold grid place-items-center absolute -top-1 -right-1 border border-[#120f19]">
+                {backend ? backend.data.dms.reduce((total, dm) => total + dm.unread_count, 0) : 2}
+              </span>}
             </button>
 
             <div className="w-[1px] h-6 bg-white/15 mx-0.5" />
@@ -745,6 +770,7 @@ export function SpaceWorkspace({
         {/* Right Controls */}
         <div className="flex shrink-0 items-center gap-2">
           {!isInLobby && <button
+            disabled={!!backend}
             onClick={toggleRoleForDemo}
             title="Chuyển thử nghiệm Chủ kênh / Thành viên"
             className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition ${
@@ -790,6 +816,7 @@ export function SpaceWorkspace({
                     Thông báo mới nhất
                   </span>
                   <button
+                    disabled={!!backend}
                     onClick={triggerSimulatedIncomingMessage}
                     className="text-xs px-2 py-0.5 rounded bg-[#c8b2f1]/15 text-[#c8b2f1] hover:bg-[#c8b2f1] hover:text-[#271737] font-semibold transition"
                   >
@@ -880,6 +907,7 @@ export function SpaceWorkspace({
           <>
             {activeTab === "overview" && (
               <OverviewView
+                channelId={backend ? currentServer.id : undefined}
                 currentUser={currentUser}
                 isCreator={isCreator}
                 onNavigate={(tab) =>
@@ -900,13 +928,16 @@ export function SpaceWorkspace({
                 onOpenInviteModal={() => setInviteModalOpen(true)}
                 onOpenSettingsModal={(menuIdx = 0) => {
                   setSettingsInitialMenu(menuIdx);
-                  setSettingsModalOpen(true);
+                  openChannelSettings();
                 }}
                 onOpenCreateModal={(type) => setCreateChannelModal(type)}
               />
             )}
             {activeTab === "chat" && (
               <ChannelChatView
+                chatChannels={chatChannels}
+                roomId={backend ? chatChannels.find(room => room.name === selectedChatChannel)?.id : undefined}
+                channelId={backend ? currentServer.id : undefined}
                 currentUser={currentUser}
                 onNavigate={(tab) =>
                   navigateWithHistory(false, tab, activeServerId)
@@ -920,11 +951,13 @@ export function SpaceWorkspace({
             )}
             {activeTab === "voice" && (
               <VoiceStageView
+                roomId={backend ? voiceRooms.find(room => room.name === selectedVoiceRoom)?.id : undefined}
+                voiceRooms={voiceRooms}
                 currentUser={currentUser}
                 onOpenInviteModal={() => setInviteModalOpen(true)}
                 screenShares={screenShares}
                 onShareStarted={stream => {
-                  sharing.start(stream);
+                  if (backend) void backend.voice.publishScreen(stream); else sharing.start(stream);
                   setViewedShareOwner(currentUser);
                   navigateWithHistory(false, "screen", activeServerId);
                 }}
@@ -932,8 +965,8 @@ export function SpaceWorkspace({
                   setViewedShareOwner(owner);
                   navigateWithHistory(false, "screen", activeServerId);
                 }}
-                onStopSharing={sharing.stop}
-                onLeaveVoice={sharing.stop}
+                onStopSharing={backend ? () => void backend.voice.stopScreen() : sharing.stop}
+                onLeaveVoice={backend ? () => void backend.voice.leave() : sharing.stop}
                 onNavigate={(tab) =>
                   navigateWithHistory(false, tab, activeServerId)
                 }
@@ -950,7 +983,7 @@ export function SpaceWorkspace({
                 screenShares={screenShares}
                 viewedOwner={viewedShareOwner}
                 onWatchShare={setViewedShareOwner}
-                onStopSharing={sharing.stop}
+                onStopSharing={backend ? () => void backend.voice.stopScreen() : sharing.stop}
                 onNavigate={(tab) =>
                   navigateWithHistory(false, tab, activeServerId)
                 }
@@ -961,8 +994,8 @@ export function SpaceWorkspace({
         )}
       </div>
 
-      {sharing.stream && (isInLobby || activeTab !== "screen" || viewedShareOwner !== currentUser) && <aside aria-label="Màn hình chia sẻ thu nhỏ" className="fixed bottom-9 right-4 z-40 w-64 max-w-[calc(100vw-32px)] shadow-xl">
-        <ShareVideo compact share={{ owner: currentUser, stream: sharing.stream, isLocal: true }} onStop={sharing.stop} onOpen={() => {
+      {screenShares.find(share => share.isLocal) && (isInLobby || activeTab !== "screen" || viewedShareOwner !== currentUser) && <aside aria-label="Màn hình chia sẻ thu nhỏ" className="fixed bottom-9 right-4 z-40 w-64 max-w-[calc(100vw-32px)] shadow-xl">
+        <ShareVideo compact share={screenShares.find(share => share.isLocal)!} onStop={backend ? () => void backend.voice.stopScreen() : sharing.stop} onOpen={() => {
           setViewedShareOwner(currentUser);
           navigateWithHistory(false, "screen", activeServerId);
         }} />
@@ -1025,8 +1058,11 @@ export function SpaceWorkspace({
                       </div>
 
                       <button
-                        onClick={() => {
-                          if (!isInvited) setInvitedIds([...invitedIds, fr.id]);
+                        onClick={async () => {
+                          if (isInvited) return;
+                          if (backend) {
+                            try { await backend.api.request(`/channels/${currentServer.id}/invitations`, "POST", { target_user_id: fr.id }); setInvitedIds(previous => [...previous, fr.id]); await backend.refresh(); } catch (error) { backend.report(error); }
+                          } else setInvitedIds([...invitedIds, fr.id]);
                         }}
                         className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
                           isInvited
@@ -1082,7 +1118,7 @@ export function SpaceWorkspace({
             <div className="px-5 py-4 bg-[#120f19] border-b border-white/10 flex items-center justify-between">
               <h3 className="text-sm font-bold text-[#f4effa]">
                 {createChannelModal === "chat"
-                  ? "Tạo Kênh Văn Bản"
+                  ? "Tạo Phòng Trò Chuyện"
                   : "Tạo Phòng Đàm Thoại"}
               </h3>
               <button
@@ -1099,7 +1135,7 @@ export function SpaceWorkspace({
             >
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-[#b7aabe]">
-                  TÊN {createChannelModal === "chat" ? "KÊNH" : "PHÒNG"}
+                  TÊN PHÒNG
                 </label>
                 <input
                   type="text"
@@ -1130,7 +1166,7 @@ export function SpaceWorkspace({
                   onClick={() => {
                     setCreateChannelModal(null);
                     setSettingsInitialMenu(2);
-                    setSettingsModalOpen(true);
+                    openChannelSettings();
                   }}
                   className="text-xs font-semibold text-[#a2d9d3] hover:underline"
                 >
@@ -1283,7 +1319,7 @@ export function SpaceWorkspace({
       <footer className="h-7 bg-[#100d16] border-t border-white/10 px-6 flex items-center justify-end gap-4 text-xs text-[#b7aabe] shrink-0 z-30">
         <span className="text-[#a2d9d3] flex items-center gap-1 font-medium">
           <Wifi className="w-3 h-3 shrink-0" />
-          <span>18ms</span>
+          <span>{backend ? backend.status : "18ms"}</span>
         </span>
         <span>v2.4.0</span>
       </footer>

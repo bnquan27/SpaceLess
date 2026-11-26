@@ -17,7 +17,7 @@ Real-time messaging and voice/video communication, including friends, DM, Channe
 People using the desktop app to exchange messages and communicate in real time. A narrower audience and differentiating market position remain undecided.
 
 ## Capabilities and Constraints
-Username/password login; email-based recovery. DM only between friends; voice/video and screen sharing in VOICE rooms. Authoritative REST/WebSocket server topology and hosting remain open decisions. The current implementation is the standalone Orbit sign-in page in Tauri; the comparison interface remains at `/design`. Authentication and messaging services are not yet connected.
+Username/password login; email-based recovery. DM only between friends; voice/video and screen sharing in VOICE rooms. The existing workspace now connects to the Rust REST/WebSocket service for auth, bootstrap, social flows, messaging and profile updates. `/preview` keeps the labelled sample; `/design` remains the comparison interface. Production topology, hosting and native packaging remain open acceptance work. SMTP, object storage/gateway and LiveKit Cloud require server configuration and real-provider verification. See `docs/backend-current-ui.md` for local startup and measured limits.
 
 ## Brand Commitments
 Orbit is the user-approved sign-in direction (2026-11-08), including a floating astronaut. Preserve its plum/lilac space composition in sign-in work.

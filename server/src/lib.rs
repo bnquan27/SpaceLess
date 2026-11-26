@@ -1,4 +1,5 @@
 mod auth;
+mod browser;
 mod channels;
 mod chat;
 mod db;
@@ -300,6 +301,7 @@ fn api(state: AppState) -> Router {
                 .merge(sync::routes()),
         )
         .fallback(|| async { ApiError::not_found() })
+        .layer(axum::middleware::from_fn(browser::cors))
         .with_state(state)
 }
 
@@ -343,7 +345,7 @@ pub async fn serve() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .parse::<SocketAddr>()?;
         let listener = tokio::net::TcpListener::bind(addr).await?;
         tracing::info!(address=%listener.local_addr()?, "SpaceLess download gateway ready");
-        axum::serve(listener, files::gateway_routes().with_state(state))
+        axum::serve(listener, files::gateway_routes().layer(axum::middleware::from_fn(browser::cors)).with_state(state))
             .with_graceful_shutdown(async {
                 let _ = tokio::signal::ctrl_c().await;
             })

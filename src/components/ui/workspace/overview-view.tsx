@@ -16,6 +16,7 @@ import {
   Crown,
 } from "lucide-react";
 import { ViewProps } from "./types";
+import { useBackend, initials } from "@/lib/workspace-backend";
 
 export const OverviewView: React.FC<ViewProps> = ({
   onNavigate,
@@ -27,7 +28,10 @@ export const OverviewView: React.FC<ViewProps> = ({
   onOpenInviteModal,
   onOpenSettingsModal,
   onOpenCreateModal,
+  channelId,
 }) => {
+  const backend = useBackend();
+  const channel = backend?.data.channels.find(channel => channel.channel_id === channelId);
   const openChannel = (channelName: string) => {
     if (onSelectChatChannel) {
       onSelectChatChannel(channelName);
@@ -52,7 +56,7 @@ export const OverviewView: React.FC<ViewProps> = ({
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold tracking-wider uppercase">
               <span className="px-2.5 py-1 rounded-full bg-[#a2d9d3]/15 border border-[#a2d9d3]/30 text-[#a2d9d3]">
-                • TRỰC TUYẾN
+                {backend ? 'Kết nối API' : '• TRỰC TUYẾN'}
               </span>
               {isCreator && (
                 <span className="px-2.5 py-1 rounded-full bg-[#c8b2f1]/15 border border-[#c8b2f1]/30 text-[#c8b2f1] flex items-center gap-1">
@@ -63,7 +67,7 @@ export const OverviewView: React.FC<ViewProps> = ({
 
             <div className="flex items-center gap-3">
               <h1 className="text-2xl md:text-[28px] font-bold tracking-tight text-[#f4effa]">
-                Nhóm Đồ Án - UI/UX
+                {backend ? channel?.channel_name || 'Chưa có kênh' : 'Nhóm Đồ Án - UI/UX'}
               </h1>
               <span className="w-6 h-6 rounded-full bg-[#c8b2f1]/15 border border-[#c8b2f1]/30 text-[#c8b2f1] grid place-items-center text-xs">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -114,23 +118,23 @@ export const OverviewView: React.FC<ViewProps> = ({
                 <Users className="w-3.5 h-3.5 text-[#a2d9d3]" /> Thành viên
               </span>
               <span className="px-2.5 py-0.5 rounded-full text-xs bg-[#a2d9d3]/15 text-[#a2d9d3] font-semibold">
-                12 Thành viên
+                {backend ? channel?.members.length || 0 : 12} Thành viên
               </span>
             </div>
 
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center -space-x-1.5">
-                {[["Quốc Bảo", "QB"], ["Minh Anh", "MA"], ["Thu Hà", "TH"], ["Hoàng Long", "HL"]].map(([name, initials]) => (
+                {(backend ? (channel?.members || []).slice(0,4).map(member => [member.full_name, initials(member.full_name)]) : [["Quốc Bảo", "QB"], ["Minh Anh", "MA"], ["Thu Hà", "TH"], ["Hoàng Long", "HL"]]).map(([name, initials]) => (
                   <div
                     key={name}
                     className="w-8 h-8 rounded-full bg-[#261e3a] border-2 border-[#15121d] text-xs font-bold flex items-center justify-center text-[#f4effa] relative"
                   >
                     <PreviewAvatar name={name} initials={initials} />
-                    <span className="w-2 h-2 rounded-full bg-[#a2d9d3] absolute bottom-0 right-0 border border-[#15121d]" />
+                    <span hidden={!!backend} className="w-2 h-2 rounded-full bg-[#a2d9d3] absolute bottom-0 right-0 border border-[#15121d]" />
                   </div>
                 ))}
                 <div className="w-8 h-8 rounded-full bg-[#1c172c] border-2 border-[#15121d] text-xs font-bold flex items-center justify-center text-[#b7aabe]">
-                  +8
+                  +{backend ? Math.max(0,(channel?.members.length || 0)-4) : 8}
                 </div>
               </div>
               <button
@@ -142,8 +146,8 @@ export const OverviewView: React.FC<ViewProps> = ({
             </div>
 
             <div className="flex items-center justify-between text-xs text-[#b7aabe] pt-2.5 border-t border-white/10">
-              <span className="text-[#a2d9d3] font-medium">• 4 trực tuyến</span>
-              <span>• 8 ngoại tuyến</span>
+              <span className="text-[#a2d9d3] font-medium">{backend ? 'Thành viên trong kênh' : '• 4 trực tuyến'}</span>
+              <span>{backend ? 'Không công bố trạng thái hiện diện' : '• 8 ngoại tuyến'}</span>
             </div>
           </div>
         </section>
@@ -216,7 +220,7 @@ export const OverviewView: React.FC<ViewProps> = ({
                             </span>
                           )}
                           {ch.dot && (
-                            <span className="w-2 h-2 rounded-full bg-[#a2d9d3]" />
+                            <span hidden={!!backend} className="w-2 h-2 rounded-full bg-[#a2d9d3]" />
                           )}
                         </span>
                         <span className="block text-xs text-[#b7aabe] mt-0.5">
@@ -272,7 +276,7 @@ export const OverviewView: React.FC<ViewProps> = ({
 
             {/* Other Voice Rooms */}
             <div className="space-y-2.5">
-              {[{ id: "preview-meeting", name: "Phòng Họp Nhóm", sub: "3 người trong phòng", locked: false }, ...voiceRooms].map((vr) =>
+              {(backend ? voiceRooms : [{ id: "preview-meeting", name: "Phòng Họp Nhóm", sub: "3 người trong phòng", locked: false }, ...voiceRooms]).map((vr) =>
                 vr.locked && !isCreator ? (
                   <div
                     key={vr.id}

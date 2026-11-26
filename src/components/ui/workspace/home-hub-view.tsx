@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { PreviewAvatar, PreviewServerPhoto } from "./preview-images";
 import { VOICE_ROOMS_DATA } from "./voice-stage-view";
+import { useBackend, initials } from "@/lib/workspace-backend";
 
 export interface HomeServerItem {
   id: string;
@@ -40,15 +41,26 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
   onOpenDm,
   onQuickJoinVoice,
 }) => {
-  const activeVoiceRooms = Object.entries(VOICE_ROOMS_DATA).map(([name, room]) => ({
+  const backend = useBackend();
+  const [creatingChannel, setCreatingChannel] = useState(false);
+  const [channelName, setChannelName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const activeVoiceRooms = backend ? backend.data.rooms.filter(room => room.type === "VOICE" && backend.data.voice_states.some(state => state.room_id === room.room_id && state.state === "CONNECTED" && backend.data.friends.some(person => person.user_id === state.user_id))).map(room => ({ name: room.room_name, serverId: room.channel_id!, friends: backend.data.voice_states.filter(state => state.room_id === room.room_id && state.state === "CONNECTED").filter(state => backend.data.friends.some(person => person.user_id === state.user_id)).map(state => ({ name: backend.nameOf(state.user_id), init: initials(backend.nameOf(state.user_id)) })) })) : Object.entries(VOICE_ROOMS_DATA).map(([name, room]) => ({
     name,
+    serverId: "uiux",
     friends: room.participants.filter(person => ["Thu Hà", "Quốc Bảo", "Minh Anh", "Hoàng Long"].includes(person.name)),
   })).filter(room => room.friends.length > 0).slice(0, 3);
   const [inviteCode, setInviteCode] = useState("");
   const [joinNotice, setJoinNotice] = useState("");
 
-  const handleJoinByCode = (e: React.FormEvent) => {
+  const handleJoinByCode = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (backend) {
+      const code = inviteCode.trim().split('/').filter(Boolean).pop();
+      if (!code) return;
+      try { await backend.api.request(`/channel-links/${encodeURIComponent(code)}/join`, "POST"); await backend.refresh(); setJoinNotice("Đã tham gia kênh."); setInviteCode(""); } catch (error) { backend.report(error); }
+      return;
+    }
     if (!inviteCode.trim()) return;
     setJoinNotice(`Đang kết nối vào kênh "${inviteCode}"...`);
     setTimeout(() => {
@@ -69,7 +81,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
                 <Sparkles className="w-3 h-3 shrink-0" /> SẢNH CHỜ
               </span>
               <span className="px-2.5 py-1 rounded-full bg-[#a2d9d3]/15 border border-[#a2d9d3]/30 text-[#a2d9d3]">
-                Dữ liệu mẫu
+                {backend ? "Kết nối API" : "Dữ liệu mẫu"}
               </span>
             </div>
 
@@ -119,6 +131,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
         </section>
 
         {/* 2. HAI KHUNG BẰNG NHAU & KÉO SÁT XUỐNG GẦN THANH DOCK */}
+        {backend && backend.data.invitations.filter(invite => invite.invitee_id === backend.data.profile.user_id).map(invite => <div key={invite.invitation_id} className="flex flex-wrap items-center gap-3 rounded-xl border border-[#c8b2f1]/30 bg-[#1c172c] p-4 text-sm"><span className="flex-1">Lời mời vào kênh <strong>{invite.channel_name}</strong></span>{['ACCEPT','DECLINE'].map(decision => <button key={decision} onClick={() => void backend.api.request(`/invitations/${invite.invitation_id}`,'PATCH',{decision}).then(backend.refresh).catch(backend.report)} className="rounded-lg border border-white/15 px-3 py-2">{decision === 'ACCEPT' ? 'Chấp nhận lời mời kênh' : 'Từ chối'}</button>)}</div>)}
         <div className="lg:flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch lg:min-h-0">
           {/* CỘT TRÁI (8/12): KÊNH TRUY CẬP GẦN ĐÂY (Đã bỏ phần mô tả kênh) */}
           <div className="lg:col-span-8 bg-[#1c172c]/70 border border-white/10 rounded-2xl p-6 flex flex-col justify-between shadow-lg min-h-0 overflow-y-auto">
@@ -134,13 +147,14 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
                   </p>
                 </div>
 
-                <button className="workspace-action px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 font-semibold text-[#f4effa] flex items-center gap-1.5 transition">
+                <button onClick={() => setCreatingChannel(value => !value)} className="workspace-action px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 font-semibold text-[#f4effa] flex items-center gap-1.5 transition">
                   <Plus className="w-3.5 h-3.5 text-[#c8b2f1] shrink-0" />
                   <span>Tạo kênh</span>
                 </button>
               </div>
 
               {/* Lưới 2x2 Thẻ Kênh (Gọn gàng, không có mô tả) */}
+              {backend && creatingChannel && <form onSubmit={async event => { event.preventDefault(); if (creating) return; setCreating(true); try { const value = await backend.api.request<{channel:{channel_id:string}}>('/channels', 'POST', {channel_name:channelName.trim()}); await backend.refresh(); setChannelName(''); setCreatingChannel(false); onSelectServer(value.channel.channel_id); } catch(error) { backend.report(error); } finally { setCreating(false); } }} className="flex flex-wrap items-end gap-3 rounded-xl bg-[#15121d] p-4"><label className="flex-1 text-sm">Tên kênh<input value={channelName} onChange={event => setChannelName(event.target.value)} required maxLength={100} className="mt-2 w-full rounded-xl border border-white/15 bg-[#1c172c] p-3"/></label><button disabled={creating || !channelName.trim()} className="rounded-xl bg-[#c8b2f1] px-4 py-3 text-sm font-semibold text-[#271737] disabled:opacity-50">{creating ? 'Đang tạo…' : 'Lưu kênh'}</button></form>}
               {servers.length === 0 && <p className="rounded-xl bg-[#15121d]/80 p-5 text-sm text-[#b7aabe]">Chưa có kênh truy cập gần đây. Chọn kênh từ thanh điều hướng phía trên.</p>}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {servers.map((srv) => {
@@ -182,7 +196,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
                       <div className="pt-3 border-t border-white/10 flex items-center justify-between">
                         <div className="flex items-center gap-2 text-xs text-[#b7aabe]">
                           <span className="text-[#a2d9d3] font-medium">
-                            • {srv.onlineCount} trực tuyến
+                            {backend ? 'Thành viên trong kênh' : `• ${srv.onlineCount} trực tuyến`}
                           </span>
                           <span>/ {srv.membersCount} thành viên</span>
                         </div>
@@ -201,14 +215,14 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
               <div className="mb-3 flex items-center gap-2">
                 <Headphones className="h-4 w-4 text-[#a2d9d3]" />
                 <h2 className="text-sm font-semibold text-[#f4effa]">Bạn bè trong phòng thoại</h2>
-                <span className="text-xs text-[#b7aabe]">Dữ liệu mẫu</span>
+                <span className="text-xs text-[#b7aabe]">{backend ? "Trạng thái từ API" : "Dữ liệu mẫu"}</span>
               </div>
               <div className="space-y-2">
                 {activeVoiceRooms.map(room => (
                   <div key={room.name} className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-[#15121d]/70 p-3">
                     <div className="min-w-0 flex-1 basis-36">
                       <p className="truncate text-sm font-semibold text-[#f4effa]">{room.name}</p>
-                      <p className="mt-1 truncate text-xs text-[#b7aabe]">Nhóm Đồ Án - UI/UX</p>
+                      <p className="mt-1 truncate text-xs text-[#b7aabe]">{backend ? backend.data.channels.find(channel => channel.channel_id === room.serverId)?.channel_name : 'Nhóm Đồ Án - UI/UX'}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex -space-x-2" aria-label={room.friends.map(friend => friend.name).join(", ")}>
@@ -220,7 +234,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
                       </div>
                       <span className="whitespace-nowrap text-xs text-[#b7aabe]">{room.friends.length} bạn</span>
                     </div>
-                    <button onClick={() => onQuickJoinVoice("uiux", room.name)} aria-label={`Tham gia ${room.name}`} className="workspace-action rounded-lg bg-[#a2d9d3] px-4 py-2 text-sm font-semibold text-[#15121d] hover:bg-[#b5e5df]">Tham gia</button>
+                    <button onClick={() => onQuickJoinVoice(room.serverId, room.name)} aria-label={`Tham gia ${room.name}`} className="workspace-action rounded-lg bg-[#a2d9d3] px-4 py-2 text-sm font-semibold text-[#15121d] hover:bg-[#b5e5df]">Tham gia</button>
                   </div>
                 ))}
               </div>
@@ -249,7 +263,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
               </div>
 
               <div className="space-y-2.5">
-                {[
+                {(backend ? backend.data.dms.map(dm => { const id = dm.member_ids?.find(id => id !== backend.data.profile.user_id) || ""; const name = backend.nameOf(id); return { init: initials(name), name, status: dm.is_read_only ? "Chỉ đọc" : "Mở cuộc trò chuyện", time: "", unread: dm.unread_count > 0 }; }) : [
                   {
                     init: "HĐ",
                     name: "Hoàng Đạt",
@@ -278,7 +292,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
                     time: "Hôm nay",
                     unread: false,
                   },
-                ].map((friend, i) => (
+                ]).map((friend, i) => (
                   <button
                     key={i}
                     type="button"
@@ -288,7 +302,7 @@ export const HomeHubView: React.FC<HomeHubViewProps> = ({
                     <span className="flex items-center gap-3 min-w-0">
                       <span className="w-9 h-9 rounded-full bg-[#261e3a] text-[#c8b2f1] text-xs font-bold grid place-items-center relative shrink-0">
                         <PreviewAvatar name={friend.name} initials={friend.init} />
-                        <span className="w-2.5 h-2.5 rounded-full bg-[#a2d9d3] border-2 border-[#15121d] absolute bottom-0 right-0" />
+                        <span hidden={!!backend} className="w-2.5 h-2.5 rounded-full bg-[#a2d9d3] border-2 border-[#15121d] absolute bottom-0 right-0" />
                       </span>
                       <span className="min-w-0">
                         <span className="block text-sm font-bold text-[#f4effa] truncate">

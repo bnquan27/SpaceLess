@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { SharePicker } from "./share-picker";
+import { useBackend } from "@/lib/workspace-backend";
 import { PreviewAvatar } from "./preview-images";
 import {
   ArrowLeft,
@@ -92,19 +93,25 @@ export const VoiceStageView: React.FC<ViewProps> = ({
   onWatchShare,
   onStopSharing,
   onLeaveVoice,
+  roomId,
+  voiceRooms = [],
   onOpenInviteModal,
 }) => {
+  const backend = useBackend();
+  const joinedHere = !!backend && backend.voice.connected && backend.voice.roomId === roomId;
   const [sharePickerOpen, setSharePickerOpen] = useState(false);
-  const [micMuted, setMicMuted] = useState(false);
+  const [previewMicMuted, setMicMuted] = useState(false);
+  const micMuted = backend ? backend.voice.micMuted : previewMicMuted;
   const [deafened, setDeafened] = useState(false);
-  const [cameraOn, setCameraOn] = useState(false);
+  const [previewCameraOn, setCameraOn] = useState(false);
+  const cameraOn = backend ? backend.voice.cameraOn : previewCameraOn;
 
-  const activeRoomName = VOICE_ROOMS_DATA[selectedVoiceRoom]
+  const activeRoomName = backend ? selectedVoiceRoom : VOICE_ROOMS_DATA[selectedVoiceRoom]
     ? selectedVoiceRoom
     : "Phòng Họp Nhóm";
-  const roomData = VOICE_ROOMS_DATA[activeRoomName];
+  const roomData = backend ? {subtitle:joinedHere ? "Đã kết nối LiveKit" : "Chưa tham gia phòng thoại",participants:[]} : VOICE_ROOMS_DATA[activeRoomName];
 
-  const allParticipants = [
+  const allParticipants = backend ? (joinedHere ? backend.voice.participants : (backend.data.voice_states.filter(state => state.room_id === roomId && state.state === 'CONNECTED').map(state => ({init:backend.nameOf(state.user_id).slice(0,2),name:backend.nameOf(state.user_id),badge:'Trong phòng thoại',speaking:false,sub:''})))) : [
     ...roomData.participants,
     {
       init: "NM",
@@ -129,7 +136,7 @@ export const VoiceStageView: React.FC<ViewProps> = ({
             </button>
 
             <div className="flex flex-wrap items-center gap-1 bg-[#1c172c] p-1 rounded-xl border border-white/10">
-              {Object.keys(VOICE_ROOMS_DATA).map((rName) => (
+              {(backend ? voiceRooms.map(room => room.name) : Object.keys(VOICE_ROOMS_DATA)).map((rName) => (
                 <button
                   key={rName}
                   onClick={() => onSelectVoiceRoom?.(rName)}
@@ -162,7 +169,9 @@ export const VoiceStageView: React.FC<ViewProps> = ({
               {allParticipants.length} thành viên
             </span>
           </div>
+          {backend && !joinedHere && <button disabled={!roomId || backend.voice.busy} onClick={() => { if (roomId) void backend.voice.join(roomId); }} className="workspace-action rounded-xl bg-[#a2d9d3] px-4 py-2 text-xs font-bold text-[#15121d] disabled:opacity-50">{backend.voice.busy ? 'Đang kết nối…' : 'Tham gia phòng thoại'}</button>}
           <button
+            disabled={!!backend && !joinedHere}
             onClick={() => setSharePickerOpen(true)}
             className="workspace-action px-4 py-2 rounded-xl bg-[#c8b2f1] hover:bg-[#d8c7f7] text-[#271737] font-bold flex items-center gap-1.5 transition shadow"
           >
@@ -232,7 +241,8 @@ export const VoiceStageView: React.FC<ViewProps> = ({
         <div className="mx-auto flex flex-col items-center gap-2 pt-2">
           <div className="px-3 py-2.5 rounded-2xl bg-[#1c172c] border border-white/15 flex flex-wrap items-center justify-center gap-2 shadow-2xl">
             <button
-              onClick={() => setMicMuted(!micMuted)}
+              disabled={!!backend && !joinedHere}
+              onClick={() => backend ? void backend.voice.mic() : setMicMuted(!micMuted)}
               aria-label="Tắt mic"
               aria-pressed={micMuted}
               title={micMuted ? "Bật mic" : "Tắt mic"}
@@ -249,7 +259,8 @@ export const VoiceStageView: React.FC<ViewProps> = ({
               )}
             </button>
             <button
-              onClick={() => setDeafened(!deafened)}
+              disabled={!!backend && !joinedHere}
+              onClick={() => { if (backend) void backend.voice.listen(!deafened); setDeafened(!deafened); }}
               aria-label="Tắt âm thanh tai nghe"
               aria-pressed={deafened}
               title={deafened ? "Bật âm thanh tai nghe" : "Tắt âm thanh tai nghe"}
@@ -262,7 +273,8 @@ export const VoiceStageView: React.FC<ViewProps> = ({
               {deafened ? <VolumeX className="w-4 h-4" /> : <Headphones className="w-4 h-4" />}
             </button>
             <button
-              onClick={() => setCameraOn(!cameraOn)}
+              disabled={!!backend && !joinedHere}
+              onClick={() => backend ? void backend.voice.camera() : setCameraOn(!cameraOn)}
               aria-label="Camera"
               aria-pressed={cameraOn}
               title={cameraOn ? "Tắt camera" : "Bật camera"}
@@ -277,6 +289,7 @@ export const VoiceStageView: React.FC<ViewProps> = ({
             <button
               onClick={() => setSharePickerOpen(true)}
               aria-label="Mở màn hình chia sẻ"
+              disabled={!!backend && !joinedHere}
               title="Mở màn hình chia sẻ"
               className="w-10 h-10 rounded-xl bg-white/10 hover:bg-[#a2d9d3]/20 text-[#a2d9d3] border border-[#a2d9d3]/30 flex items-center justify-center transition"
             >

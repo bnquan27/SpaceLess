@@ -39,6 +39,15 @@ struct SendMessage {
     content: Option<String>,
     #[serde(default)]
     upload_ids: Vec<Id>,
+    reply_to: Option<Id>,
+    forward_from: Option<MessageSource>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MessageSource {
+    room_id: Id,
+    message_id: Id,
 }
 
 #[derive(Deserialize)]
@@ -123,6 +132,7 @@ const MESSAGE_VIEW: &str = "SELECT jsonb_build_object(
     'message_id',m.id::text,'room_id',m.room_id::text,'sender_id',m.sender_id::text,
     'client_id',m.client_id,'room_sequence',m.sequence::text,'content',COALESCE(m.content,''),
     'time_created',m.created_at,'time_edited',m.edited_at,
+    'reply_context',m.reply_context,'forward_context',m.forward_context,
     'attachments',COALESCE((SELECT jsonb_agg(jsonb_build_object('attachment_id',a.id::text,
         'file_name',u.file_name,'mime_type',u.mime_type,'file_size_bytes',u.size_bytes) ORDER BY a.id)
         FROM message_attachments a JOIN file_uploads u ON u.id=a.upload_id WHERE a.message_id=m.id),'[]'),
@@ -158,7 +168,10 @@ async fn send(
         return Err(ApiError::bad("INVALID_CLIENT_ID"));
     }
     let content = input.content.as_deref().unwrap_or_default();
-    valid_content(content, !input.upload_ids.is_empty())?;
+    valid_content(content, !input.upload_ids.is_empty() || input.forward_from.is_some())?;
+    if input.reply_to.is_some() && input.forward_from.is_some() {
+        return Err(ApiError::bad("INVALID_MESSAGE_CONTEXT"));
+    }
     if input.upload_ids.len() > 5 {
         return Err(ApiError::bad("INVALID_UPLOADS"));
     }
@@ -166,7 +179,11 @@ async fn send(
     if input.upload_ids.windows(2).any(|ids| ids[0] == ids[1]) {
         return Err(ApiError::bad("INVALID_UPLOADS"));
     }
-    let hash = request_hash(content, &input.upload_ids);
+    let mut hash = request_hash(content, &input.upload_ids);
+    if input.reply_to.is_some() || input.forward_from.is_some() {
+        let source = input.forward_from.as_ref().map(|source| (source.room_id.to_string(), source.message_id.to_string()));
+        hash = hex::encode(Sha256::digest(format!("{hash}:{}:{}", input.reply_to.map(|id| id.to_string()).unwrap_or_default(), serde_json::to_string(&source).unwrap())));
+    }
     // S3 verification happens outside the room write lock. Older client IDs remain retryable.
     if !input.upload_ids.is_empty() || client_id_len > 64 {
         if let Some(value) = retry_existing(&state, &actor, room, &input.client_id, &hash).await? {
@@ -194,6 +211,12 @@ async fn send(
         tx.commit().await?;
         return Ok((StatusCode::OK, Json(value)));
     }
+    let reply_context = if let Some(message) = input.reply_to {
+        Some(message_context(&mut tx, actor.user_id, room, message, false).await?)
+    } else { None };
+    let forward_context = if let Some(source) = &input.forward_from {
+        Some(message_context(&mut tx, actor.user_id, source.room_id, source.message_id, true).await?)
+    } else { None };
     let id = state.id().await?;
     let sequence: i64 = sqlx::query_scalar(
         "UPDATE rooms SET last_sequence=last_sequence+1 WHERE id=$1 RETURNING last_sequence",
@@ -201,8 +224,9 @@ async fn send(
     .bind(room.0)
     .fetch_one(&mut *tx)
     .await?;
-    sqlx::query("INSERT INTO messages(id,room_id,sender_id,client_id,sequence,content) VALUES($1,$2,$3,$4,$5,$6)")
+    sqlx::query("INSERT INTO messages(id,room_id,sender_id,client_id,sequence,content,reply_context,forward_context) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
         .bind(id.0).bind(room.0).bind(actor.user_id.0).bind(&input.client_id).bind(sequence).bind(content_for_storage(content))
+        .bind(reply_context).bind(forward_context)
         .execute(&mut *tx).await?;
     sqlx::query("INSERT INTO message_send_receipts(room_id,sender_id,client_id,message_id,request_hash) VALUES($1,$2,$3,$4,$5)")
         .bind(room.0).bind(actor.user_id.0).bind(&input.client_id).bind(id.0).bind(hash)
@@ -218,6 +242,18 @@ async fn send(
     .await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(view)))
+}
+
+async fn message_context(conn: &mut PgConnection, user: Id, room: Id, message: Id, forwarding: bool) -> Result<Value> {
+    text_room(&db::room_access(conn, user, room).await?)?;
+    let context: Option<Value> = sqlx::query_scalar("SELECT jsonb_build_object('message_id',m.id::text,'room_id',m.room_id::text,'sender_name',u.full_name,'text',concat_ws(E'\\n',m.forward_context->>'text',m.content),'has_attachments',EXISTS(SELECT 1 FROM message_attachments WHERE message_id=m.id)) FROM messages m JOIN users u ON u.id=m.sender_id WHERE m.room_id=$1 AND m.id=$2 FOR SHARE OF m")
+        .bind(room.0).bind(message.0).fetch_optional(conn).await?;
+    let context = context.ok_or_else(ApiError::not_found)?;
+    // File grants belong to the original room; never leak them into another room.
+    if forwarding && context["has_attachments"] == true {
+        return Err(ApiError::bad("FORWARD_ATTACHMENTS_UNAVAILABLE"));
+    }
+    Ok(context)
 }
 
 fn content_for_storage(content: &str) -> Option<&str> {

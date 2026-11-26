@@ -554,7 +554,7 @@ async fn authorize_upload(
             }
         }
         _ => {
-            let visible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM channels c JOIN channel_members m ON c.id=m.channel_id WHERE c.id=$1 AND c.is_available AND m.user_id=$2 AND (c.icon_upload_id=$3 OR c.background_upload_id=$3))")
+            let visible: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM channels c WHERE c.id=$1 AND c.is_available AND (c.join_mode='PUBLIC_LINK' OR EXISTS(SELECT 1 FROM channel_members m WHERE m.channel_id=c.id AND m.user_id=$2)) AND (c.icon_upload_id=$3 OR c.background_upload_id=$3))")
                 .bind(row.get::<i64,_>("channel_id")).bind(actor.0).bind(upload.0).fetch_one(&mut *conn).await?;
             if !visible {
                 return Err(ApiError::not_found());

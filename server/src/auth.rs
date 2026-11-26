@@ -137,6 +137,11 @@ impl FromRequestParts<AppState> for Actor {
             .and_then(|value| value.split_once(' '))
             .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("Bearer"))
             .map(|(_, token)| token)
+            .or_else(|| {
+                (parts.uri.path() == "/api/v1/ws" || parts.uri.path() == "/ws")
+                    .then(|| crate::browser::socket_token(&parts.headers))
+                    .flatten()
+            })
             .ok_or_else(ApiError::unauthorized)?;
         let mut validation = Validation::new(Algorithm::HS256);
         validation.leeway = 0;
