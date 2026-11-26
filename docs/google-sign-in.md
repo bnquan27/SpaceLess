@@ -24,6 +24,16 @@ Chọn **Đăng nhập bằng Google** trên màn hình Orbit và hoàn tất x�
 
 Lần đầu, máy chủ dùng email đã xác minh và tên Google khi có, rồi sinh tên đăng nhập SpaceLess. Ngày sinh và số điện thoại để trống. Tài khoản chỉ dùng Google tiếp tục đăng nhập qua Google. Nếu email đã thuộc tài khoản SpaceLess khác, hãy dùng phương thức đăng nhập hiện có của tài khoản đó.
 
+## Mở ứng dụng Windows với API Cloudflare staging
+
+Thoát bản SpaceLessApp đang mở trước khi chạy lệnh từ thư mục dự án. Đặt `GOOGLE_OAUTH_CLIENT_ID` và `STAGING_GATE_TOKEN` trong `.env.staging.local`, rồi chạy:
+
+```powershell
+.\src-tauri\start-staging.ps1 -Build
+```
+
+Bỏ `-Build` khi mở lại bằng bản đã build. Nếu đã có tệp JSON riêng chứa `STAGING_GATE_TOKEN`, truyền đường dẫn qua `-StagingSecretsPath`. Chương trình khởi chạy chuyển khóa staging vào tiến trình desktop. Giữ `GOOGLE_OAUTH_CLIENT_SECRET` trên máy chủ.
+
 ## Dùng Supabase cho môi trường staging
 
 Supabase phù hợp khi cần một PostgreSQL dùng chung cho staging. Giữ Rust làm máy chủ API và nơi cấp phiên SpaceLess. Dùng một project staging riêng và tắt **Data API** trước khi áp dụng migration.

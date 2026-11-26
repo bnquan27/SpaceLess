@@ -23,19 +23,14 @@ pub async fn lock_session(conn: &mut PgConnection, actor: &Actor) -> Result<()> 
 
 pub async fn validate_session<'e>(executor: impl PgExecutor<'e>, actor: &Actor) -> Result<()> {
     let expires = DateTime::from_timestamp(actor.exp, 0).ok_or_else(ApiError::unauthorized)?;
-    let valid: bool = sqlx::query_scalar(
-        "SELECT EXISTS (SELECT 1 FROM auth_sessions s JOIN users u ON u.id = s.user_id
-         WHERE s.session_id = $1 AND u.id = $2 AND u.auth_version = $3 AND s.auth_version = $3
-           AND u.is_available AND s.revoked_at IS NULL AND s.expires_at >= $4 AND $4 > clock_timestamp()
-           AND NOT EXISTS (SELECT 1 FROM revoked_tokens WHERE token_jti = $5))",
-    )
-    .bind(actor.sid)
-    .bind(actor.user_id.0)
-    .bind(actor.auth_version)
-    .bind(expires)
-    .bind(actor.jti)
-    .fetch_one(executor)
-    .await?;
+    let valid: bool = sqlx::query_scalar(include_str!("sql/validate_session.sql"))
+        .bind(actor.sid)
+        .bind(actor.user_id.0)
+        .bind(actor.auth_version)
+        .bind(expires)
+        .bind(actor.jti)
+        .fetch_one(executor)
+        .await?;
     if valid {
         Ok(())
     } else {

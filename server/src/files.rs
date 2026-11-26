@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io::Cursor, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 use aws_sdk_s3::{
     Client, operation::get_object::GetObjectOutput, presigning::PresigningConfig,
@@ -21,6 +21,9 @@ use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 
 use crate::{Actor, ApiError, AppState, Body, Id, Path, Query, Result, db};
+
+#[path = "file_content.rs"]
+mod file_content;
 
 static ATTACHMENT_VERIFICATION: Semaphore = Semaphore::const_new(4);
 
@@ -389,60 +392,8 @@ async fn read_upload_bytes(
 }
 
 fn validate_bytes(bytes: &[u8], mime: &str) -> Result<()> {
-    let invalid = || ApiError::bad("Nội dung tệp không đúng định dạng đã khai báo.");
-    if mime.starts_with("image/") {
-        let format = match mime {
-            "image/png" => image::ImageFormat::Png,
-            "image/jpeg" => image::ImageFormat::Jpeg,
-            "image/webp" => image::ImageFormat::WebP,
-            _ => return Err(invalid()),
-        };
-        if image::guess_format(bytes).map_err(|_| invalid())? != format {
-            return Err(invalid());
-        }
-        let mut reader = image::ImageReader::with_format(Cursor::new(bytes), format);
-        let mut limits = image::Limits::default();
-        limits.max_image_width = Some(16_384);
-        limits.max_image_height = Some(16_384);
-        limits.max_alloc = Some(128 * 1024 * 1024);
-        reader.limits(limits);
-        reader.decode().map_err(|_| invalid())?;
-    } else if mime == "application/pdf" {
-        if !bytes.starts_with(b"%PDF-")
-            || !bytes[bytes.len().saturating_sub(1024)..]
-                .windows(5)
-                .any(|w| w == b"%%EOF")
-        {
-            return Err(invalid());
-        }
-    } else if mime.starts_with("text/") {
-        if std::str::from_utf8(bytes).is_err() || bytes.contains(&0) {
-            return Err(invalid());
-        }
-    } else {
-        let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|_| invalid())?;
-        if zip.len() > 10_000 {
-            return Err(invalid());
-        }
-        let required = match mime {
-            "application/zip" => None,
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => {
-                Some("word/document.xml")
-            }
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => {
-                Some("xl/workbook.xml")
-            }
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
-                Some("ppt/presentation.xml")
-            }
-            _ => return Err(invalid()),
-        };
-        if let Some(name) = required {
-            zip.by_name("[Content_Types].xml").map_err(|_| invalid())?;
-            zip.by_name(name).map_err(|_| invalid())?;
-        }
-    }
-    Ok(())
+    file_content::validate_bytes(bytes, mime, 128 * 1024 * 1024)
+        .map_err(|_| ApiError::bad("Nội dung tệp không đúng định dạng đã khai báo."))
 }
 
 pub async fn attach_message(
@@ -699,7 +650,7 @@ pub async fn run_cleanup(state: &AppState) -> Result<()> {
         let mut tx = state.pool.begin().await?;
         let row = sqlx::query(
             "SELECT id, staging_key, storage_key, object_version, status FROM file_uploads
-            WHERE put_expires_at <= now() AND (status='DELETE_PENDING'
+            WHERE storage_key NOT LIKE 'uploads/worker/final/%' AND put_expires_at <= now() AND (status='DELETE_PENDING'
                 OR (status='STAGED' AND expires_at <= now())
                 OR (status='ATTACHED' AND staging_key IS NOT NULL))
             ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1",

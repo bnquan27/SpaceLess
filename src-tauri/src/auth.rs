@@ -25,6 +25,10 @@ const CANCELLED: &str = "Đã hủy đăng nhập. Bạn có thể thử lại."
 const NETWORK_ERROR: &str = "Không thể kết nối máy chủ. Kiểm tra kết nối rồi thử lại.";
 const INVALID_RESPONSE: &str = "Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.";
 const CALLBACK_HTML: &str = include_str!("oauth-return.html");
+const STAGING_API_URL: &str = "https://spaceless-staging-api.whgaming200.workers.dev/api/v1/";
+const STAGING_HEADER: &str = "x-spaceless-staging-token";
+const STAGING_ACCESS_ERROR: &str =
+    "Máy chủ staging từ chối quyền truy cập. Hãy kiểm tra khóa staging và mở lại ứng dụng.";
 
 #[derive(Default)]
 pub struct AuthState(Mutex<AuthInner>);
@@ -38,7 +42,7 @@ struct AuthInner {
 
 struct Session {
     token: String,
-    api: Url,
+    api: Api,
 }
 
 struct Attempt<'a> {
@@ -112,12 +116,81 @@ fn api_url(value: &str) -> Result<Url, String> {
     Ok(url)
 }
 
-fn config() -> Result<Url, String> {
-    api_url(option_env!("VITE_SPACELESS_API_URL").unwrap_or_default())
+#[derive(Clone)]
+struct Api {
+    base: Url,
+    client: reqwest::Client,
+    staging_gate: Option<reqwest::header::HeaderValue>,
 }
 
-fn google_client_id() -> Result<&'static str, String> {
-    option_env!("VITE_GOOGLE_CLIENT_ID")
+impl Api {
+    fn new(base: Url, gate: Option<&str>) -> Result<Self, String> {
+        let staging_gate = if base.as_str() == STAGING_API_URL {
+            let mut value = gate
+                .filter(|token| (32..=512).contains(&token.len()))
+                .and_then(|token| reqwest::header::HeaderValue::from_str(token).ok())
+                .ok_or_else(|| STAGING_ACCESS_ERROR.to_string())?;
+            value.set_sensitive(true);
+            Some(value)
+        } else {
+            None
+        };
+        Ok(Self {
+            base,
+            client: client_builder()
+                .build()
+                .map_err(|_| NETWORK_ERROR.to_string())?,
+            staging_gate,
+        })
+    }
+
+    fn request(&self, method: Method, endpoint: &'static str) -> reqwest::RequestBuilder {
+        let request = self
+            .client
+            .request(method, self.base.join(endpoint).unwrap());
+        match &self.staging_gate {
+            Some(gate) => request.header(STAGING_HEADER, gate.clone()),
+            None => request,
+        }
+    }
+
+    async fn check_google_connection(&self) -> Result<(), String> {
+        let response = self
+            .request(Method::GET, "users/me")
+            .send()
+            .await
+            .map_err(|_| NETWORK_ERROR.to_string())?;
+        match response.status() {
+            StatusCode::UNAUTHORIZED => Ok(()),
+            StatusCode::FORBIDDEN if self.staging_gate.is_some() => {
+                Err(STAGING_ACCESS_ERROR.into())
+            }
+            _ => Err("Máy chủ chưa sẵn sàng đăng nhập Google. Vui lòng thử lại sau.".into()),
+        }
+    }
+}
+
+fn staging_mode() -> bool {
+    std::env::var("SPACELESS_DESKTOP_STAGING").as_deref() == Ok("1")
+}
+
+fn config() -> Result<Api, String> {
+    let url = if staging_mode() {
+        STAGING_API_URL
+    } else {
+        option_env!("VITE_SPACELESS_API_URL").unwrap_or_default()
+    };
+    let gate = std::env::var("SPACELESS_DESKTOP_STAGING_TOKEN").ok();
+    Api::new(api_url(url)?, gate.as_deref())
+}
+
+fn google_client_id() -> Result<String, String> {
+    let client_id = if staging_mode() {
+        std::env::var("SPACELESS_DESKTOP_GOOGLE_CLIENT_ID").ok()
+    } else {
+        option_env!("VITE_GOOGLE_CLIENT_ID").map(str::to_owned)
+    };
+    client_id
         .filter(|value| {
             value.ends_with(".apps.googleusercontent.com") && !value.contains(char::is_whitespace)
         })
@@ -126,17 +199,17 @@ fn google_client_id() -> Result<&'static str, String> {
 
 #[tauri::command]
 pub fn auth_availability() -> Availability {
-    let password = config().is_ok();
+    let api = config();
+    let password = api.is_ok();
     let google = password && google_client_id().is_ok();
     Availability {
         password,
         google,
-        message: if !password {
-            "Chưa cấu hình máy chủ. Đây là bản xem thử, chưa thể đăng nhập.".into()
-        } else if !google {
-            "Đăng nhập Google chưa được cấu hình trên bản desktop này.".into()
-        } else {
-            "Google mở trong trình duyệt mặc định. Lần đầu đăng nhập sẽ tạo tài khoản SpaceLessApp."
+        message: match api {
+            Err(error) if staging_mode() => error,
+            Err(_) => "Chưa cấu hình máy chủ. Đây là bản xem thử, chưa thể đăng nhập.".into(),
+            Ok(_) if !google => "Đăng nhập Google chưa được cấu hình trên bản desktop này.".into(),
+            Ok(_) => "Google mở trong trình duyệt mặc định. Lần đầu đăng nhập sẽ tạo tài khoản SpaceLessApp."
                 .into()
         },
     }
@@ -153,12 +226,10 @@ pub struct Profile {
     full_name: String,
 }
 
-fn client() -> Result<reqwest::Client, String> {
+fn client_builder() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::none())
-        .build()
-        .map_err(|_| NETWORK_ERROR.into())
 }
 
 async fn token(response: reqwest::Response) -> Result<TokenResponse, String> {
@@ -179,7 +250,7 @@ async fn token(response: reqwest::Response) -> Result<TokenResponse, String> {
 }
 
 async fn establish(
-    api: Url,
+    api: Api,
     response: reqwest::Response,
     attempt: &Attempt<'_>,
 ) -> Result<Profile, String> {
@@ -188,8 +259,8 @@ async fn establish(
         if attempt.cancel.is_cancelled() {
             return Err(CANCELLED.into());
         }
-        let response = client()?
-            .get(api.join("users/me").unwrap())
+        let response = api
+            .request(Method::GET, "users/me")
             .bearer_auth(&token.access_token)
             .send()
             .await
@@ -216,14 +287,12 @@ async fn establish(
     }
     .await;
     if result.is_err() {
-        if let Ok(client) = client() {
-            let _ = client
-                .post(api.join("auth/logout").unwrap())
-                .timeout(Duration::from_secs(5))
-                .bearer_auth(&token.access_token)
-                .send()
-                .await;
-        }
+        let _ = api
+            .request(Method::POST, "auth/logout")
+            .timeout(Duration::from_secs(5))
+            .bearer_auth(&token.access_token)
+            .send()
+            .await;
     }
     result
 }
@@ -242,8 +311,8 @@ pub async fn auth_password_login(
 ) -> Result<Profile, String> {
     let api = config()?;
     let attempt = state.begin()?;
-    let response = client()?
-        .post(api.join("auth/login").unwrap())
+    let response = api
+        .request(Method::POST, "auth/login")
         .json(&PasswordLogin { username, password })
         .send()
         .await
@@ -445,6 +514,10 @@ pub async fn auth_google_login(
     let api = config()?;
     let client_id = google_client_id()?;
     let attempt = state.begin()?;
+    api.check_google_connection().await?;
+    if attempt.cancel.is_cancelled() {
+        return Err(CANCELLED.into());
+    }
     let oauth = OAuthRequest::new()?;
     let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
         .await
@@ -472,7 +545,7 @@ pub async fn auth_google_login(
     let callback_result = async {
         app.opener()
             .open_url(
-                oauth.authorization_url(client_id, port).to_string(),
+                oauth.authorization_url(&client_id, port).to_string(),
                 None::<&str>,
             )
             .map_err(|_| {
@@ -493,8 +566,8 @@ pub async fn auth_google_login(
                 if attempt.cancel.is_cancelled() {
                     return Err(CANCELLED.into());
                 }
-                let response = client()?
-                    .post(api.join("auth/google/exchange").unwrap())
+                let response = api
+                    .request(Method::POST, "auth/google/exchange")
                     .json(&GoogleExchange {
                         code,
                         code_verifier: oauth.verifier,
@@ -542,8 +615,9 @@ pub fn auth_cancel(state: tauri::State<'_, AuthState>) {
 pub async fn auth_logout(state: tauri::State<'_, AuthState>) -> Result<(), String> {
     let session = state.0.lock().unwrap().session.take();
     if let Some(session) = session {
-        let response = client()?
-            .post(session.api.join("auth/logout").unwrap())
+        let response = session
+            .api
+            .request(Method::POST, "auth/logout")
             .bearer_auth(session.token)
             .send()
             .await
@@ -628,6 +702,38 @@ mod tests {
     }
 
     #[test]
+    fn staging_auth_sends_the_gate_only_to_the_staging_api() {
+        let gate = "synthetic-staging-token-for-tests";
+        let staging = api_url(STAGING_API_URL).unwrap();
+        assert!(Api::new(staging.clone(), None).is_err());
+        assert!(Api::new(staging.clone(), Some("too-short")).is_err());
+        let api = Api::new(staging, Some(gate)).unwrap();
+        for (method, endpoint) in [
+            (Method::GET, "users/me"),
+            (Method::POST, "auth/login"),
+            (Method::POST, "auth/google/exchange"),
+            (Method::POST, "auth/logout"),
+        ] {
+            let request = api.request(method, endpoint).build().unwrap();
+            assert_eq!(
+                request.url().as_str(),
+                format!("{STAGING_API_URL}{endpoint}")
+            );
+            assert_eq!(request.headers()[STAGING_HEADER], gate);
+        }
+
+        for url in [
+            "http://127.0.0.1:8080/api/v1",
+            "https://spaceless-staging-api.whgaming200.workers.dev:8443/api/v1",
+            "https://example.com/api/v1",
+        ] {
+            let api = Api::new(api_url(url).unwrap(), Some(gate)).unwrap();
+            let request = api.request(Method::GET, "users/me").build().unwrap();
+            assert!(!request.headers().contains_key(STAGING_HEADER));
+        }
+    }
+
+    #[test]
     fn cancel_prevents_a_pending_login_from_creating_a_session() {
         let state = AuthState::default();
         let attempt = state.begin().unwrap();
@@ -636,7 +742,7 @@ mod tests {
         assert!(attempt
             .commit(Session {
                 token: "test".into(),
-                api: Url::parse("https://example.com/api/v1/").unwrap()
+                api: Api::new(api_url("https://example.com/api/v1/").unwrap(), None).unwrap()
             })
             .is_err());
         drop(attempt);
@@ -666,7 +772,7 @@ mod tests {
                 .await
                 .unwrap()
         });
-        let client = client().unwrap();
+        let client = client_builder().build().unwrap();
         let base = format!("http://{address}");
         let head = client
             .head(format!("{base}/?state=expected&code=secret"))
@@ -854,14 +960,15 @@ mod tests {
             if cancel_before {
                 attempt.cancel.cancel();
             }
-            let response = client()
+            let response = client_builder()
+                .build()
                 .unwrap()
                 .get(format!("http://{address}/token"))
                 .send()
                 .await
                 .unwrap();
             let result = establish(
-                Url::parse(&format!("http://{address}/api/v1/")).unwrap(),
+                Api::new(api_url(&format!("http://{address}/api/v1/")).unwrap(), None).unwrap(),
                 response,
                 &attempt,
             )

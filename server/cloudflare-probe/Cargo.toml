@@ -1,0 +1,24 @@
+[package]
+name = "spaceless-cloudflare-probe"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+argon2 = { version = "0.5", default-features = false, features = ["alloc", "password-hash"] }
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+subtle = "2"
+tokio-postgres = { version = "0.7", default-features = false, features = ["js", "with-chrono-0_4", "with-uuid-1"] }
+uuid = { version = "1", default-features = false }
+worker = { version = "0.9", features = ["tokio-postgres"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
