@@ -31,6 +31,7 @@ import {
 } from "./workspace/types";
 import { OverviewView } from "./workspace/overview-view";
 import { ChannelChatView } from "./workspace/channel-chat-view";
+import { useMessageSendLimit } from "@/lib/use-message-send-limit";
 import { DirectMessageView } from "./workspace/direct-message-view";
 import { VoiceStageView } from "./workspace/voice-stage-view";
 import { ScreenShareView } from "./workspace/screen-share-view";
@@ -63,6 +64,7 @@ export function SpaceWorkspace({
   currentUser = "Nguyễn Minh",
   onLogout,
 }: SpaceWorkspaceProps) {
+  const sendLimit = useMessageSendLimit();
   // 1. VỊ TRÍ ĐẦU TIÊN KHI VÀO APP LÀ SẢNH CHỜ (isInLobby = true)
   const [isInLobby, setIsInLobby] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
@@ -819,6 +821,7 @@ export function SpaceWorkspace({
           />
         ) : activeTab === "dm" ? (
           <DirectMessageView
+            sendLimit={sendLimit}
             currentUser={currentUser}
             onNavigate={(tab) =>
               navigateWithHistory(false, tab, activeServerId)
@@ -855,6 +858,7 @@ export function SpaceWorkspace({
             )}
             {activeTab === "chat" && (
               <ChannelChatView
+                sendLimit={sendLimit}
                 currentUser={currentUser}
                 onNavigate={(tab) =>
                   navigateWithHistory(false, tab, activeServerId)

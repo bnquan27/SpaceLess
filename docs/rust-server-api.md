@@ -77,7 +77,7 @@ Phòng công khai dành cho thành viên Kênh. Phòng riêng dành cho Creator,
 
 | Method và đường dẫn | Đầu vào | Kết quả và quyền |
 | --- | --- | --- |
-| `POST /rooms/{room_id}/messages` | `client_id`, `content`, `upload_ids?` | Quyền ghi TEXT/DM. Retry cùng khóa và dữ liệu gốc trả bản hiện tại hoặc `409 MESSAGE_DELETED`. Dùng lại khóa với dữ liệu khác trả `409 CLIENT_ID_REUSED`. |
+| `POST /rooms/{room_id}/messages` | `client_id`, `content`, `upload_ids?` | Quyền ghi TEXT/DM. Mỗi tài khoản được gửi tối đa 5 tin mới trong 2 giây liên tiếp, tính chung mọi phòng. Vượt ngưỡng trả `429 MESSAGE_RATE_LIMITED` kèm `Retry-After: 2`. Retry cùng khóa và dữ liệu gốc trả bản hiện tại hoặc `409 MESSAGE_DELETED` kể cả khi đang bị giới hạn. Dùng lại khóa với dữ liệu khác trả `409 CLIENT_ID_REUSED`. |
 | `GET /rooms/{room_id}/messages` | `before_sequence?` hoặc `after_sequence?`, `limit?`, `through_sequence?` | Quyền đọc, gồm DM chỉ đọc. Trang tin, tổng hợp reaction, reaction của actor và mốc sequence. `through_sequence` là mốc chụp đề xuất cho các trang tiếp theo khi bắt kịp. |
 | `PATCH /rooms/{room_id}/messages/{message_id}` | `content` | Chỉ tác giả có quyền ghi. Giữ sequence, trả nội dung và `time_edited`. |
 | `DELETE /rooms/{room_id}/messages/{message_id}` | Path | Tác giả có quyền ghi hoặc người quản trị đúng phạm vi. Trong DM chỉ tác giả có quyền ghi. |

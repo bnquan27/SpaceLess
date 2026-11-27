@@ -27,6 +27,8 @@ Giữ nguyên `APP_JWT_SECRET` để các JWT v1 còn hạn tiếp tục dùng �
 
 [Worker staging](https://spaceless-staging-api.whgaming200.workers.dev) dùng Hyperdrive để kết nối PostgreSQL của Supabase. Vai trò PostgreSQL của Worker chỉ có quyền cần cho các route staging. Worker dùng schema hiện có và không tự chạy migration.
 
+Trước khi triển khai Worker có giới hạn gửi tin, áp dụng migration `server/migrations/0008_message_send_windows.sql` và cập nhật quyền bằng `server/cloudflare-api/worker-role.sql`.
+
 Bản staging phục vụ đăng nhập bằng mật khẩu và Google, làm mới phiên, đăng xuất, hồ sơ, bootstrap, kênh, bạn bè, nhắn tin, WebSocket, tệp trên R2 và phòng thoại LiveKit Cloud. Các route của staging yêu cầu header `X-SpaceLess-Staging-Token`. Webhook LiveKit xác thực bằng chữ ký và hash của nội dung. Giữ giá trị header staging trong môi trường kiểm thử đáng tin cậy. Ứng dụng desktop và frontend hiện dùng API riêng.
 
 1. Cài `cf`, `worker-build`, Rust target `wasm32-unknown-unknown`, và PowerShell 7. Đăng nhập `cf` vào tài khoản Workers Free.

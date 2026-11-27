@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { ViewProps } from "./types";
+import { messageRateWarning, type MessageSendLimit } from "@/lib/use-message-send-limit";
 import { PreviewAvatar } from "./preview-images";
 
 interface FriendContact {
@@ -28,7 +29,8 @@ interface FriendContact {
   dot: string;
 }
 
-export const DirectMessageView: React.FC<ViewProps> = ({
+export const DirectMessageView: React.FC<ViewProps & { sendLimit: MessageSendLimit }> = ({
+  sendLimit,
   currentUser,
   onNavigate,
 }) => {
@@ -170,7 +172,7 @@ export const DirectMessageView: React.FC<ViewProps> = ({
 
   const handleSendDm = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!dmInput.trim()) return;
+    if (!dmInput.trim() || !sendLimit.trySend()) return;
     setDmMessages([
       ...dmMessages,
       {
@@ -610,12 +612,18 @@ export const DirectMessageView: React.FC<ViewProps> = ({
             <input
               type="text"
               value={dmInput}
+              aria-describedby={sendLimit.blocked ? "message-rate-warning" : undefined}
               aria-label={`Nhắn tin riêng cho ${activeFriend.name}`}
               onChange={(e) => setDmInput(e.target.value)}
               placeholder={`Nhắn tin riêng cho ${activeFriend.name}...`}
               className="w-full bg-[#15121d]/80 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-[#f4effa] placeholder-[#b7aabe] focus:border-[#c8b2f1] transition"
             />
 
+            {sendLimit.blocked && (
+              <p id="message-rate-warning" role="alert" className="text-xs font-semibold text-[#ffc5b5]">
+                {messageRateWarning}
+              </p>
+            )}
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-2.5">
                 <button
@@ -628,7 +636,8 @@ export const DirectMessageView: React.FC<ViewProps> = ({
               </div>
               <button
                 type="submit"
-                className="workspace-action px-4 py-2 rounded-xl bg-[#c8b2f1] hover:bg-[#d8c7f7] text-[#271737] font-bold flex items-center gap-1.5 shadow transition"
+                disabled={sendLimit.blocked}
+                className="workspace-action px-4 py-2 rounded-xl bg-[#c8b2f1] hover:bg-[#d8c7f7] text-[#271737] font-bold flex items-center gap-1.5 shadow transition disabled:opacity-50"
               >
                 Gửi <Send size={13} />
               </button>

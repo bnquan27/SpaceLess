@@ -315,6 +315,21 @@ async fn send(
     if input.client_id.chars().count() > 64 {
         return Err(bad("INVALID_CLIENT_ID"));
     }
+    if tx
+        .query_typed(
+            include_str!("../../src/sql/claim_message_send.sql"),
+            &[(&actor.user_id, Type::INT8)],
+        )
+        .await?
+        .is_empty()
+    {
+        return Err(ApiError::new(
+            429,
+            "MESSAGE_RATE_LIMITED",
+            "NÀY BÌNH TĨNH, BẠN ĐANG GỬI TIN NHẮN QUÁ NHANH",
+        )
+        .with_retry_after(2));
+    }
     let id = db::snowflake(&tx).await?;
     let row = tx
         .query_typed(

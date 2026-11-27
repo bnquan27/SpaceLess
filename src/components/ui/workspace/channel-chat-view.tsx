@@ -19,6 +19,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { ViewProps } from "./types";
+import { messageRateWarning, type MessageSendLimit } from "@/lib/use-message-send-limit";
 
 const CHANNEL_METADATA: Record<
   string,
@@ -46,7 +47,8 @@ const CHANNEL_METADATA: Record<
   },
 };
 
-export const ChannelChatView: React.FC<ViewProps> = ({
+export const ChannelChatView: React.FC<ViewProps & { sendLimit: MessageSendLimit }> = ({
+  sendLimit,
   currentUser,
   onNavigate,
   selectedChatChannel = "chung",
@@ -142,7 +144,7 @@ export const ChannelChatView: React.FC<ViewProps> = ({
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!msgInput.trim()) return;
+    if (!msgInput.trim() || !sendLimit.trySend()) return;
     const newMsg = {
       id: Date.now(),
       sender: `Bạn (${currentUser})`,
@@ -344,12 +346,18 @@ export const ChannelChatView: React.FC<ViewProps> = ({
             <input
               type="text"
               value={msgInput}
+              aria-describedby={sendLimit.blocked ? "message-rate-warning" : undefined}
               aria-label={`Nhắn tin tới #${activeChannel}`}
               onChange={(e) => setMsgInput(e.target.value)}
               placeholder={`Nhắn tin tới #${activeChannel}...`}
               className="w-full bg-[#15121d]/80 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-[#f4effa] placeholder-[#b7aabe] focus:border-[#c8b2f1] transition"
             />
 
+            {sendLimit.blocked && (
+              <p id="message-rate-warning" role="alert" className="text-xs font-semibold text-[#ffc5b5]">
+                {messageRateWarning}
+              </p>
+            )}
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-1 text-[#b7aabe]">
                 <button type="button" aria-label="Đính kèm tệp" className="workspace-icon-button rounded-md hover:bg-white/10 hover:text-[#c8b2f1]">
@@ -364,7 +372,8 @@ export const ChannelChatView: React.FC<ViewProps> = ({
               </div>
               <button
                 type="submit"
-                className="workspace-action px-4 py-2 rounded-xl bg-[#c8b2f1] hover:bg-[#d8c7f7] text-[#271737] font-bold flex items-center gap-1.5 transition shadow"
+                disabled={sendLimit.blocked}
+                className="workspace-action px-4 py-2 rounded-xl bg-[#c8b2f1] hover:bg-[#d8c7f7] text-[#271737] font-bold flex items-center gap-1.5 transition shadow disabled:opacity-50"
               >
                 Gửi <Send className="w-3.5 h-3.5 shrink-0" />
               </button>

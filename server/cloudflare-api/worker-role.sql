@@ -25,6 +25,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.channel_members, public.room_cate
     public.room_members, public.room_moderator_denials, public.relations, public.voice_sessions,
     public.file_uploads TO :"worker_role";
 GRANT SELECT, INSERT, DELETE ON public.user_blocks TO :"worker_role";
+GRANT SELECT, INSERT, UPDATE ON public.message_send_windows TO :"worker_role";
 GRANT SELECT, INSERT ON public.dm_pairs, public.messages, public.message_send_receipts,
     public.message_attachments, public.livekit_webhook_receipts TO :"worker_role";
 GRANT SELECT ON public.role_definitions, public.channel_room_access,

@@ -194,6 +194,20 @@ async fn send(
         tx.commit().await?;
         return Ok((StatusCode::OK, Json(value)));
     }
+    if sqlx::query(include_str!("sql/claim_message_send.sql"))
+        .bind(actor.user_id.0)
+        .fetch_optional(&mut *tx)
+        .await?
+        .is_none()
+    {
+        let mut error = ApiError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            "MESSAGE_RATE_LIMITED",
+            "NÀY BÌNH TĨNH, BẠN ĐANG GỬI TIN NHẮN QUÁ NHANH",
+        );
+        error.retry_after = Some(2);
+        return Err(error);
+    }
     let id = state.id().await?;
     let sequence: i64 = sqlx::query_scalar(
         "UPDATE rooms SET last_sequence=last_sequence+1 WHERE id=$1 RETURNING last_sequence",

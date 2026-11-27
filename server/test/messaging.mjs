@@ -46,6 +46,29 @@ function closedWithin(socket) {
 }
 
 export async function messaging({ run, request, account, connect }) {
+    await run('The sixth send across rooms is blocked until the sender window expires', async () => {
+        const owner = await account();
+        const member = await account();
+        const first = await textRoom(request, owner, member);
+        const second = await textRoom(request, owner);
+        const burst = await Promise.all(Array.from({ length: 5 }, (_, index) =>
+            sendMessage(request, index % 2 === 0 ? first : second, owner.token, `burst-${index}`)));
+        const sixth = { params: second, token: owner.token, body: { client_id: 'sixth', content: 'sixth' } };
+        const blocked = await request('POST', messages, {
+            ...sixth, status: 429, code: 'MESSAGE_RATE_LIMITED',
+        });
+        assert.equal(blocked.body.error.message, 'NÀY BÌNH TĨNH, BẠN ĐANG GỬI TIN NHẮN QUÁ NHANH');
+        assert.equal(blocked.headers.get('retry-after'), '2');
+        const retry = await request('POST', messages, {
+            params: first, token: owner.token, body: { client_id: 'burst-0', content: 'burst-0' },
+        });
+        assert.equal(retry.body.message_id, burst[0].message_id);
+        await sendMessage(request, first, member.token, 'independent');
+        await delay(2_000);
+        const accepted = await request('POST', messages, { ...sixth, status: 201 });
+        assert.equal(accepted.body.room_sequence, '3');
+    });
+
     await run('Message retries preserve identity and edits, and deletion preserves the retry receipt', async () => {
         const { id, token } = await account();
         const room = await textRoom(request, { token });

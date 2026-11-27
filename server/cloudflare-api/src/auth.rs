@@ -41,6 +41,7 @@ pub struct ApiError {
     status: u16,
     code: &'static str,
     message: &'static str,
+    retry_after: Option<u64>,
 }
 
 impl ApiError {
@@ -49,7 +50,13 @@ impl ApiError {
             status,
             code,
             message,
+            retry_after: None,
         }
+    }
+
+    pub(crate) fn with_retry_after(mut self, seconds: u64) -> Self {
+        self.retry_after = Some(seconds);
+        self
     }
 
     fn bad_body() -> Self {
@@ -77,11 +84,17 @@ impl ApiError {
     }
 
     pub(crate) fn response(&self) -> worker::Result<Response> {
-        Response::from_json(&json!({
+        let mut response = Response::from_json(&json!({
             "error": {"code": self.code, "message": self.message},
             "request_id": Uuid::new_v4(),
-        }))
-        .map(|response| response.with_status(self.status))
+        }))?
+        .with_status(self.status);
+        if let Some(seconds) = self.retry_after {
+            response
+                .headers_mut()
+                .set("Retry-After", &seconds.to_string())?;
+        }
+        Ok(response)
     }
 }
 
